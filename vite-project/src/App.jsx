@@ -1,10 +1,15 @@
 import React from 'react'
 import { Greeting } from './components/Greeting'
+import { Counter } from './components/Counter'
+import { ControlledForm, Form } from './components/Form'
 
 export const App = () => {
   return (
     <div>
-      <Greeting
+      <Form />
+      {/* <ControlledForm /> */}
+      {/* <Counter /> */}
+      {/* <Greeting
         // isStudent={true}
         isStudent
         // name={"ali"}
@@ -21,7 +26,7 @@ export const App = () => {
             city: "Karachi",
             country: "Pakistan"
           },
-        }} />
+        }} /> */}
       {/* <Greeting
         // isStudent={false}
         name={"hasnain"} age={25} hobbies={["playing", "coding", "teaching"]}

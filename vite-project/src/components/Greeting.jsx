@@ -38,7 +38,7 @@ const properties = {
 // const name = 0 ?? "Default" ;
 const name = undefined ?? "Default";
 
-console.log(name, "name");
+// console.log(name, "name");
 
 // const {
 //     isStudent,
