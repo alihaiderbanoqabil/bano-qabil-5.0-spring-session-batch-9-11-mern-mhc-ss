@@ -2,11 +2,17 @@ import React from 'react'
 import { Greeting } from './components/Greeting'
 import { Counter } from './components/Counter'
 import { ControlledForm, Form } from './components/Form'
+import { List } from './components/List'
+import { Parent } from './components/Parent'
+import { UseMemo } from './components/UseMemo'
 
 export const App = () => {
   return (
     <div>
-      <Form />
+      <UseMemo />
+      {/* <Parent /> */}
+      {/* <List /> */}
+      {/* <Form /> */}
       {/* <ControlledForm /> */}
       {/* <Counter /> */}
       {/* <Greeting
