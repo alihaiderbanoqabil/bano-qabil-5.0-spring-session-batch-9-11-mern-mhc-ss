@@ -4,14 +4,20 @@ export const UseMemo = () => {
     const [count, setCount] = useState(0);
     const [todos, setTodos] = useState([]);
     // const calculation = expensiveCalculation(count);
-    const calculation = useMemo(() => expensiveCalculation(count), [count]);
+    const calculation = useMemo(() => expensiveCalculation(count), [count])
 
     const increment = () => {
         setCount((c) => c + 1);
     };
+    
     const addTodo = () => {
-        setTodos((t) => [...t, "New Todo"]);
+        setTodos((t) => {
+            console.log(t, "t");
+            return [...t, `New Todo ${parseInt((Math.random() * 100))}`]
+        });
+        // setTodos((t) => [...t, "New Todo"]);
     };
+    console.log(todos, "todos");
 
     return (
         <div>

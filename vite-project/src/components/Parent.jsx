@@ -17,11 +17,21 @@ export const Parent = () => {
                 />
                 <button onClick={() => setCount(count + 1)}>+</button>
                 <span>{count}</span>
-                <button onClick={() => setCount(count - 1)}>-</button>
+                <button onClick={() => setCount(count - 1)}>-</button>//             <div>
+                    <input
+                        type="text"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Search users"
+                    />
+                    <button onClick={() => setCount(count + 1)}>+</button>
+                    <span>{count}</span>
+                    <button onClick={() => setCount(count - 1)}>-</button>
+                </div>
+                <Child1 count={count} update={() => {
+                    console.log('updating');
+                }} />
             </div>
-            <Child1 count={count} update={() => {
-                console.log('updating');
-            }} />
         </div>
     )
 }

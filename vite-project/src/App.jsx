@@ -5,11 +5,13 @@ import { ControlledForm, Form } from './components/Form'
 import { List } from './components/List'
 import { Parent } from './components/Parent'
 import { UseMemo } from './components/UseMemo'
+import { UseCallback } from './components/UseCallback'
 
 export const App = () => {
   return (
     <div>
-      <UseMemo />
+      <UseCallback />
+      {/* <UseMemo /> */}
       {/* <Parent /> */}
       {/* <List /> */}
       {/* <Form /> */}
