@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Greeting } from './components/Greeting'
 import { Counter } from './components/Counter'
 import { ControlledForm, Form } from './components/Form'
@@ -6,18 +6,50 @@ import { List } from './components/List'
 import { Parent } from './components/Parent'
 import { UseMemo } from './components/UseMemo'
 import { UseCallback } from './components/UseCallback'
+import { Component1 } from './components/Component1'
+import { UserContext } from './context'
+import { Home } from './screens/Home'
+import Register from './screens/Register'
+import Login from './screens/Login'
+import ForgotPassword from './screens/ForgotPassword'
+import ResetPassword from './screens/ResetPassword'
+import { Parent1 } from './components/Parent1'
 
 export const App = () => {
+  const [user, setUser] = useState("Ali");
+
   return (
-    <div>
-      <UseCallback />
-      {/* <UseMemo /> */}
-      {/* <Parent /> */}
-      {/* <List /> */}
-      {/* <Form /> */}
-      {/* <ControlledForm /> */}
-      {/* <Counter /> */}
-      {/* <Greeting
+    <UserContext.Provider value={{
+      user, setUser,
+    }}>
+
+      <div>
+        {/* <Home name="ali" /> */}
+        {/* <Home name="ali">
+          <h1>Hello</h1>
+          <p>Lorem ipsum dolor sit amet consectetur adipisicing elit. Mollitia est eius, sit error natus pariatur tempora velit sequi sint quos. Fugiat iure incidunt cupiditate fugit voluptas veritatis natus reiciendis beatae?</p>
+        </Home>
+        <Home name="ali">
+         <form action="">
+          <input type="text" />
+          <input type="color" name="" id="" />
+          <input type="date" name="" id="" />
+         </form>
+        </Home> */}
+        {/* <Register />
+        <Login />
+        <ForgotPassword />
+        <ResetPassword /> */}
+        <Parent1 />
+        {/* <Component1 /> */}
+        {/* <UseCallback /> */}
+        {/* <UseMemo /> */}
+        {/* <Parent /> */}
+        {/* <List /> */}
+        {/* <Form /> */}
+        {/* <ControlledForm /> */}
+        {/* <Counter /> */}
+        {/* <Greeting
         // isStudent={true}
         isStudent
         // name={"ali"}
@@ -35,7 +67,7 @@ export const App = () => {
             country: "Pakistan"
           },
         }} /> */}
-      {/* <Greeting
+        {/* <Greeting
         // isStudent={false}
         name={"hasnain"} age={25} hobbies={["playing", "coding", "teaching"]}
         studentInfo={{
@@ -45,7 +77,9 @@ export const App = () => {
             country: "Pakistan"
           },
         }} /> */}
-    </div>
+      </div>
+    </UserContext.Provider>
+
   )
 }
 

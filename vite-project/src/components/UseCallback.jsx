@@ -1,6 +1,7 @@
 //Without useCallback:
-import React, { memo, useCallback, useState } from 'react';
+import React, { memo, useCallback, useContext, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { UserContext } from '../context';
 
 // // Child component that receives a function prop
 // const Button = React.memo(({ onClick, text }) => {
@@ -15,6 +16,9 @@ const Button = memo(({ onClick, text }) => {
 
 // Parent component without useCallback
 export function UseCallback() {
+    const state = useContext(UserContext)
+    console.log(state, "state");
+
     const [count1, setCount1] = useState(0);
     const [count2, setCount2] = useState(0);
 
@@ -38,7 +42,7 @@ export function UseCallback() {
 
     return (
         <div>
-            <h2>Without useCallback:</h2>
+            <h2>Without useCallback: {state.user}</h2>
             <p>Count 1: {count1}</p>
             <p>Count 2: {count2}</p>
             <Button onClick={handleClick1} text="Button 1" />
