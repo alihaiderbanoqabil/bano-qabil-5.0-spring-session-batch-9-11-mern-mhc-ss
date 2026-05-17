@@ -10,6 +10,11 @@ import { About } from './screens/About';
 import { Contact } from './screens/Contact';
 import { Users } from './screens/Users';
 import { User } from './screens/User';
+import { UsersLayout } from './layouts/UserLayout';
+import { Posts } from './screens/Posts';
+import { Post } from './screens/Post';
+import { Todos } from './screens/Todos';
+import { Todo } from './screens/Todo';
 
 const router = createBrowserRouter([
   {
@@ -31,14 +36,46 @@ const router = createBrowserRouter([
         path: "/contact",
         element: <Contact />,
       },
+      // {
+      //   path: "users",
+      //   element: <Users />,
+      // },
+      // // Dynamic Route
+      // {
+      //   path: "users/:id",
+      //   element: <User />,
+      // },
       {
-        path: "users",
-        element: <Users />,
-      },
-      // Dynamic Route
-      {
-        path: "users/:id",
-        element: <User />,
+        path: "/users",
+        element: <UsersLayout />,
+
+        children: [
+          {
+            index: true,
+            element: <Users />,
+          },
+
+          {
+            path: ":userId",
+            element: <User />,
+          },
+          {
+            path: ":userId/posts",
+            element: <Posts />,
+          },
+          {
+            path: ":userId/posts/:postId",
+            element: <Post />
+          },
+          {
+            path: ":userId/todos",
+            element: <Todos />,
+          },
+          {
+            path: ":userId/todos/:postId",
+            element: <Todo />
+          }
+        ],
       },
       // {
       //   path: "users/:userId/comments/:commentId",
