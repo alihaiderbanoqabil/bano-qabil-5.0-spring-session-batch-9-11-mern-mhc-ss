@@ -1,7 +1,7 @@
 import React from "react";
 import { Outlet, Link, useParams } from "react-router-dom";
 
-export const UsersLayout = () => {
+export const UserLayout = () => {
     const { userId } = useParams()
     return (
         <div>
