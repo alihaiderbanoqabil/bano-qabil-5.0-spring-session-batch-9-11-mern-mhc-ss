@@ -54,6 +54,8 @@
 
 /* .custom-button {
   background-color: red;
+  border: 5px solid rgb(0, 255, 21);
+  color: rgb(102, 255, 0);
 } */
 
 .ant-btn {
@@ -64,4 +66,8 @@
 
 .ant-btn:hover {
   background-color: aquamarine !important;
+}
+
+.ant-picker input::placeholder {
+  color: red !important;
 }
