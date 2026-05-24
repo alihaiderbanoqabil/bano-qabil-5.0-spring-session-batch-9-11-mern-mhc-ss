@@ -18,7 +18,7 @@ export const Home = () => {
         <Card.Text>
           Some quick example text to build on the card title and make up the
           bulk of the card's content.
-          <AntButton type="dashed">Primary Button</AntButton>
+          <AntButton className='custom-button' type="primary">Primary Button</AntButton>
           <DatePicker />
           <FaAtlassian />
           <FaBeer />
