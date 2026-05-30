@@ -111,7 +111,12 @@ const Todo = lazy(() =>
 // Reusable Suspense Wrapper
 const Loadable = (Component) => {
   return (
-    <Suspense fallback={<h1>Loading...</h1>}>
+    <Suspense fallback={<h1 className='text-mint-500
+     border-2
+      border-mint-500
+      '>Loading...</h1>}>
+
+           
       {Component}
     </Suspense>
   )
