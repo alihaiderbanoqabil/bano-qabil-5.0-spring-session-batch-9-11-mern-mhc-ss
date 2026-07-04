@@ -2,10 +2,11 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "common-node-modules.js",
+  "type": "commonjs",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node common-node-modules.js",
+    "dev": "nodemon common-node-modules.js"
   },
   "keywords": [],
   "author": "",
