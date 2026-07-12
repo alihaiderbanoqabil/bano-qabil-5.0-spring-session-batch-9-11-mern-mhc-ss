@@ -162,7 +162,7 @@ const deleteUser = async (req, res) => {
 };
 
 module.exports = {
-    register,
+    register: register,
     login,
     getMe,
     getUsers,
