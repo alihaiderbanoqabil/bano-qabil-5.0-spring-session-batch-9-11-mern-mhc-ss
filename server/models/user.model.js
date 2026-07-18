@@ -1,47 +1,49 @@
+// https://mongoosejs.com/docs/schematypes.html
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
-const userSchema = new mongoose.Schema(
-    {
-        name: {
-            type: String,
-            required: [true, "Name is required"],
-            trim: true,
-        },
-        email: {
-            type: String,
-            required: [true, "Email is required"],
-            unique: true,
-            lowercase: true,
-            trim: true,
-            match: [/^\S+@\S+\.\S+$/, "Please enter a valid email"],
-        },
-        password: {
-            type: String,
-            required: [true, "Password is required"],
-            minlength: 6,
-            select: false, // don't return password by default
-        },
-        role: {
-            type: String,
-            enum: ["customer", "admin"],
-            default: "customer",
-        },
-        address: {
-            street: String,
-            city: String,
-            state: String,
-            zip: String,
-            country: String,
-        },
-        phone: {
-            type: String,
-            trim: true,
-            unique: true,
-        },
+const userSchema =new mongoose.Schema({
+    // name: String,
+    name: {
+        type: String,
+        // required: true,
+        required: [true, "Name is required"], // for throwing custom error 
+        trim: true,
     },
-    { timestamps: true }
-);
+    email: {
+        type: String,
+        required: [true, "Email is required"],
+        unique: true,
+        lowercase: true,
+        trim: true,
+        match: [/^\S+@\S+\.\S+$/, "Please enter a valid email"],
+    },
+    password: {
+        type: String,
+        required: [true, "Password is required"],
+        minlength: 8,
+        select: false, // don't return password by default
+    },
+    role: {
+        type: String,
+        enum: ["customer", "admin"],
+        default: "customer",
+    },
+    address: {
+        street: String,
+        city: String,
+        state: String,
+        zip: String,
+        country: String,
+    },
+    phone: {
+        type: String,
+        trim: true,
+        unique: true,
+    }
+}, { timestamps: true })
+// }, { timestamps: true, _id:false, __v: false })
+
 
 // Hash password before saving
 userSchema.pre("save", async function (next) {

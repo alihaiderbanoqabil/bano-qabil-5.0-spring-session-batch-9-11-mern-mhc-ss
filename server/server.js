@@ -17,9 +17,9 @@ const app = express();
 // app.use("/uploads", express.static(path.join(__dirname, "../uploads"))); // Serve static files from the uploads directory
 
 app.use("/api/users", userRoutes);
-app.use("/api/products", productRoutes);
-app.use("/api/categories", categoryRoutes);
-app.use("/api/orders", orderRoutes);
+// app.use("/api/products", productRoutes);
+// app.use("/api/categories", categoryRoutes);
+// app.use("/api/orders", orderRoutes);
 
 const PORT = process.env.PORT || 3000;
 
