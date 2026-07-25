@@ -31,11 +31,10 @@ const categorySchema = new mongoose.Schema(
 );
 
 // Auto-generate slug from name
-categorySchema.pre("save", function (next) {
+categorySchema.pre("save", function () {
   if (this.isModified("name")) {
     this.slug = this.name.toLowerCase().trim().replace(/\s+/g, "-");
   }
-  next();
 });
 
 module.exports = mongoose.model("Category", categorySchema);

@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/user.model");
+const bcrypt = require("bcryptjs");
 
 const createToken = (user) => {
     return jwt.sign(
@@ -55,9 +56,9 @@ const login = async (req, res) => {
         if (!email || !password) {
             return res.status(400).json({ message: "Email and password are required" });
         }
-
-        const user = await User.findOne({ email }).select("+password");
-        if (!user || !(await user.comparePassword(password))) {
+        const user = await User.findOne({ email:req.body.email }).select("+password");
+        // if (!user || !(await user.comparePassword(password))) {
+        if (!user || !(await bcrypt.compare(password, user.password))) {
             return res.status(401).json({ message: "Invalid email or password" });
         }
 

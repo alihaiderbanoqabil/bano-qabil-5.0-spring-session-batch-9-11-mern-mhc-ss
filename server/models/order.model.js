@@ -17,7 +17,7 @@ const orderItemSchema = new mongoose.Schema(
       required: true, // price at time of order
     },
   },
-  { _id: false }
+  { _id: false, __v: false }
 );
 
 const orderSchema = new mongoose.Schema(
