@@ -1,0 +1,1546 @@
+{
+  "_": {
+    "postman_id": "f3173087-3aad-44f8-b4a0-a6c24f55b744"
+  },
+  "item": [
+    {
+      "id": "2a8e43d4-c637-4fd5-b83f-85dba20bbb25",
+      "name": "Auth",
+      "description": {
+        "content": "Registration, login, session lookup and email verification.\n\n### Email verification rule (important)\n\nThe register controller only sends a verification email when the request body contains `role: \"customer\"` **explicitly**.\n\n| Body `role` | `isEmailVerified` | Verification email | Can log in immediately? |\n| --- | --- | --- | --- |\n| `\"customer\"` | `false` | Sent | No — verify first |\n| `\"admin\"` | `true` | Not sent | Yes |\n| omitted | `true` (role still defaults to `customer`) | Not sent | Yes |\n\nSo for quick local testing, omit `role` and you get a usable customer account with no SMTP round-trip.",
+        "type": "text/plain"
+      },
+      "item": [
+        {
+          "id": "d20ec8d8-4ed8-48e0-a75e-c2457e93f8b9",
+          "name": "Register (Customer)",
+          "request": {
+            "description": {
+              "content": "Creates a **customer** account and emails a verification link.\n\n`Public` — no token required.\n\n### Body\n\n| Field | Type | Required | Notes |\n| --- | --- | --- | --- |\n| `name` | string | ✅ | Trimmed |\n| `email` | string | ✅ | Unique, lowercased, must match `x@y.z` |\n| `password` | string | ✅ | Min 6 chars, hashed with bcrypt before saving |\n| `role` | `customer` \\| `admin` | ❌ | Defaults to `customer` |\n| `phone` | string | ❌ | **Unique** across users — reuse causes a duplicate-key error |\n| `address` | object | ❌ | `street`, `city`, `state`, `zip`, `country` |\n\n### Responses\n\n**201 Created**\n```json\n{\n  \"message\": \"User registered successfully. Please verify your email to activate your account.\",\n  \"user\": {\n    \"id\": \"66f0...\",\n    \"name\": \"Ali Haider\",\n    \"email\": \"customer@example.com\",\n    \"role\": \"customer\",\n    \"isEmailVerified\": false\n  }\n}\n```\n\n**400 Bad Request** — `{ \"message\": \"Name, email and password are required\" }` or `{ \"message\": \"User already exists\" }`\n\n### Notes\n\n- Because `role` is `customer` here, login stays blocked with `403` until the email is verified.\n- If SMTP vars (`EMAIL_HOST`, `EMAIL_USER`, `EMAIL_PASS`) are missing, the account is still created but no mail goes out — a warning is logged. Grab the token straight from the `emailVerificationToken` field in MongoDB in that case.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Ali Haider\",\n    \"email\": \"customer@example.com\",\n    \"password\": \"Pass@1234\",\n    \"role\": \"customer\",\n    \"phone\": \"03001234567\",\n    \"address\": {\n        \"street\": \"12 Main Street\",\n        \"city\": \"Karachi\",\n        \"state\": \"Sindh\",\n        \"zip\": \"75500\",\n        \"country\": \"Pakistan\"\n    }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth",
+              "noauth": []
+            }
+          },
+          "response": [
+            {
+              "_": {
+                "postman_previewlanguage": "json"
+              },
+              "id": "ec3075e0-36bd-449e-a9b8-3d0d23739e6a",
+              "name": "201 — Created",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "auth",
+                    "register"
+                  ],
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"name\": \"Ali Haider\",\n    \"email\": \"customer@example.com\",\n    \"password\": \"Pass@1234\",\n    \"role\": \"customer\"\n}"
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n    \"message\": \"User registered successfully. Please verify your email to activate your account.\",\n    \"user\": {\n        \"id\": \"66f0a1b2c3d4e5f6a7b8c9d0\",\n        \"name\": \"Ali Haider\",\n        \"email\": \"customer@example.com\",\n        \"role\": \"customer\",\n        \"isEmailVerified\": false\n    }\n}",
+              "cookie": []
+            },
+            {
+              "_": {
+                "postman_previewlanguage": "json"
+              },
+              "id": "588d5d25-bb05-4163-bd2b-6465e540b7e2",
+              "name": "400 — User already exists",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "auth",
+                    "register"
+                  ],
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"name\": \"Ali Haider\",\n    \"email\": \"customer@example.com\",\n    \"password\": \"Pass@1234\"\n}"
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n    \"message\": \"User already exists\"\n}",
+              "cookie": []
+            }
+          ],
+          "event": []
+        },
+        {
+          "id": "d3899412-71ef-4137-bfae-50566b4a3e12",
+          "name": "Register (Admin)",
+          "request": {
+            "description": {
+              "content": "Bootstraps an **admin** account. Same endpoint as customer registration, but `role: \"admin\"` marks the account as verified immediately, so you can log in right away.\n\n`Public` — no token required. Use this once per fresh database, then rely on **Users → Create User** for further accounts.\n\n### Responses\n\n**201 Created**\n```json\n{\n  \"message\": \"User registered successfully.\",\n  \"user\": {\n    \"id\": \"66f0...\",\n    \"name\": \"Admin User\",\n    \"email\": \"admin@example.com\",\n    \"role\": \"admin\"\n  }\n}\n```\n\n`isEmailVerified` is omitted from the response for non-customer roles, but is stored as `true`.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Admin User\",\n    \"email\": \"{{admin_email}}\",\n    \"password\": \"{{admin_password}}\",\n    \"role\": \"admin\",\n    \"phone\": \"03009999999\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth",
+              "noauth": []
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "912ab236-b8fe-4656-a544-d5f66eb59491",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.environment.set('admin_email', body.user.email);",
+                  "    pm.environment.set('user_id', body.user.id);",
+                  "    console.log('Admin created — now run \"Login\".');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "294703ae-c8a5-4b92-a0f3-0602f266c7f1",
+          "name": "Login",
+          "request": {
+            "description": {
+              "content": "Exchanges email + password for a JWT.\n\n`Public` — no token required.\n\n> **This is the request that powers the whole collection.** Its test script writes `token`, `user_id` and `user_role` into the active environment, so run it first.\n\n### Body\n\n| Field | Type | Required |\n| --- | --- | --- |\n| `email` | string | ✅ |\n| `password` | string | ✅ |\n\n### Responses\n\n**200 OK**\n```json\n{\n  \"message\": \"Login successfully\",\n  \"token\": \"<your-jwt-token-here>\",\n  \"user\": {\n    \"id\": \"66f0...\",\n    \"name\": \"Admin User\",\n    \"email\": \"admin@example.com\",\n    \"role\": \"admin\",\n    \"isEmailVerified\": true\n  }\n}\n```\n\n| Status | Body | Cause |\n| --- | --- | --- |\n| `400` | `Email and password are required` | Missing field |\n| `401` | `Invalid email or password` | Wrong credentials (same message for unknown email — deliberate) |\n| `403` | `Please verify your email before logging in` | `isEmailVerified` is `false` |\n\n### Cookie\n\nThe response also sets an **httpOnly** cookie:\n\n```\nSet-Cookie: token=<jwt>; Max-Age=604800; Path=/; HttpOnly; SameSite=Lax\n```\n\nPostman stores it automatically (see the **Cookies** link under Send), so subsequent requests carry it. Browser clients must opt in — `credentials: \"include\"` with fetch, or `withCredentials: true` with axios.\n\nThe cookie is `secure` + `SameSite=None` when `NODE_ENV=production`, and `SameSite=Lax` in development.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{admin_email}}\",\n    \"password\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth",
+              "noauth": []
+            }
+          },
+          "response": [
+            {
+              "_": {
+                "postman_previewlanguage": "json"
+              },
+              "id": "1a19341c-079f-4891-bf69-4aea90f316c3",
+              "name": "200 — Login successful",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "auth",
+                    "login"
+                  ],
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"email\": \"admin@example.com\",\n    \"password\": \"Admin@1234\"\n}"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n    \"message\": \"Login successfully\",\n    \"token\": \"<your-jwt-token-here>\",\n    \"user\": {\n        \"id\": \"66f0a1b2c3d4e5f6a7b8c9d0\",\n        \"name\": \"Admin User\",\n        \"email\": \"admin@example.com\",\n        \"role\": \"admin\",\n        \"isEmailVerified\": true\n    }\n}",
+              "cookie": []
+            },
+            {
+              "_": {
+                "postman_previewlanguage": "json"
+              },
+              "id": "1d49474d-0baa-47db-8745-c88561a1ba34",
+              "name": "403 — Email not verified",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "auth",
+                    "login"
+                  ],
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"email\": \"customer@example.com\",\n    \"password\": \"Pass@1234\"\n}"
+                }
+              },
+              "status": "Forbidden",
+              "code": 403,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n    \"message\": \"Please verify your email before logging in\"\n}",
+              "cookie": []
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "c893b4ee-96f2-4e8e-8d90-d880d3fc6664",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "",
+                  "    pm.test('Response contains a JWT', function () {",
+                  "        pm.expect(body.token).to.be.a('string').and.not.empty;",
+                  "    });",
+                  "",
+                  "    // Persist credentials for every other request in the collection.",
+                  "    pm.environment.set('token', body.token);",
+                  "    pm.environment.set('user_id', body.user.id);",
+                  "    pm.environment.set('user_role', body.user.role);",
+                  "",
+                  "    console.log('Token saved to environment. Role:', body.user.role);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "5975168a-0cfd-4e26-8917-8e0a406997b0",
+          "name": "Get Current User (Me)",
+          "request": {
+            "description": {
+              "content": "Returns the full user document for whoever owns `{{token}}`.\n\n`🔒 Authenticated` — any role.\n\n### Responses\n\n**200 OK**\n```json\n{\n  \"_id\": \"66f0...\",\n  \"name\": \"Admin User\",\n  \"email\": \"admin@example.com\",\n  \"role\": \"admin\",\n  \"address\": { \"city\": \"Karachi\", \"country\": \"Pakistan\" },\n  \"phone\": \"03009999999\",\n  \"isEmailVerified\": true,\n  \"createdAt\": \"2026-08-06T10:15:00.000Z\",\n  \"updatedAt\": \"2026-08-06T10:15:00.000Z\"\n}\n```\n\n| Status | Cause |\n| --- | --- |\n| `401` | `Authentication required` (no `Bearer` header), `Invalid token`, or `Token expired` |\n| `404` | Token is valid but the user was deleted |",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "1046cf78-e915-4edf-b9e5-41d7947fa8fc",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Password is never returned', function () {",
+                  "    pm.expect(pm.response.json()).to.not.have.property('password');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "eff513a0-22e4-4f54-89fc-21629cd36abd",
+          "name": "Verify Email",
+          "request": {
+            "description": {
+              "content": "Flips `isEmailVerified` to `true` and clears the stored token.\n\n`Public` — no auth header; the query-string token *is* the credential.\n\n### Query params\n\n| Param | Required | Description |\n| --- | --- | --- |\n| `token` | ✅ | Signed JWT sent in the verification email. Valid for **24 hours**. |\n\n### How to get the token locally\n\nThe email links to `FRONTEND_URL/verify-email?token=...`. Two ways to grab it without a frontend:\n\n1. Open the email and copy the `token` query param out of the link.\n2. No SMTP configured? Read it straight from Mongo:\n   ```js\n   db.users.findOne({ email: \"customer@example.com\" }, { emailVerificationToken: 1 })\n   ```\n\nPaste it into the `verification_token` environment variable and send.\n\n### Responses\n\n| Status | Body |\n| --- | --- |\n| `200` | `{ \"message\": \"Email verified successfully\" }` |\n| `400` | `Verification token is required` / `Invalid or expired verification token` / `Verification token has expired` |\n\nThe endpoint is single-use: the token is nulled after success, so a second call returns `400`.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "auth",
+                "verify-email"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [
+                {
+                  "description": {
+                    "content": "The JWT from the verification email link (24 h expiry).",
+                    "type": "text/plain"
+                  },
+                  "key": "token",
+                  "value": "{{verification_token}}"
+                }
+              ],
+              "variable": []
+            },
+            "method": "GET",
+            "auth": {
+              "type": "noauth",
+              "noauth": []
+            }
+          },
+          "response": [],
+          "event": []
+        }
+      ],
+      "event": []
+    },
+    {
+      "id": "45a4d640-1226-4a88-a9f6-11007d631e81",
+      "name": "Users",
+      "description": {
+        "content": "User management. Every route requires a token; most require the `admin` role.\n\n| Method | Path | Access |\n| --- | --- | --- |\n| `POST` | `/api/users` | admin |\n| `GET` | `/api/users` | admin |\n| `GET` | `/api/users/:id` | admin, or the user themselves |\n| `PATCH` | `/api/users/:id` | admin, or the user themselves |\n| `DELETE` | `/api/users/:id` | admin |",
+        "type": "text/plain"
+      },
+      "item": [
+        {
+          "id": "a9eaa82b-e209-4c39-82bd-be66af20ddae",
+          "name": "Create User (admin)",
+          "request": {
+            "description": {
+              "content": "Creates a user on behalf of an admin.\n\n`🔒 Authenticated` · `👑 admin only`\n\nInternally this reuses the same controller as **Auth → Register**, so the body, validation and email-verification behaviour are identical — see that request for the full field table.\n\nThe new user's id is saved to `{{target_user_id}}` for the follow-up requests in this folder.\n\n| Status | Cause |\n| --- | --- |\n| `201` | Created |\n| `400` | Missing required field, or email/phone already taken |\n| `401` | No token |\n| `403` | Token belongs to a non-admin |",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "users"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Staff Member\",\n    \"email\": \"staff@example.com\",\n    \"password\": \"Staff@1234\",\n    \"role\": \"admin\",\n    \"phone\": \"03111234567\",\n    \"address\": {\n        \"street\": \"5 Market Road\",\n        \"city\": \"Lahore\",\n        \"state\": \"Punjab\",\n        \"zip\": \"54000\",\n        \"country\": \"Pakistan\"\n    }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "76ffc15b-d112-43f6-81f7-fdd635d46df7",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    pm.environment.set('target_user_id', pm.response.json().user.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "c92e784c-d3e1-4cc1-9a98-4cf6ebd1b25d",
+          "name": "Get All Users (admin)",
+          "request": {
+            "description": {
+              "content": "Lists every user in the system.\n\n`🔒 Authenticated` · `👑 admin only`\n\nNo pagination or filtering on this route — it returns all users at once.\n\n**200 OK**\n```json\n{\n  \"message\": \"Users get successfully\",\n  \"data\": [\n    {\n      \"_id\": \"66f0...\",\n      \"name\": \"Admin User\",\n      \"email\": \"admin@example.com\",\n      \"role\": \"admin\",\n      \"isEmailVerified\": true,\n      \"createdAt\": \"2026-08-06T10:15:00.000Z\",\n      \"updatedAt\": \"2026-08-06T10:15:00.000Z\"\n    }\n  ]\n}\n```\n\nPasswords are excluded by the schema (`select: false`) and again by `.select(\"-password\")`.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "users"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "3a3a609c-513b-49d8-8afe-59eb1d7a0393",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Returns a data array', function () {",
+                  "    pm.expect(pm.response.json().data).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "3cf28775-7703-4135-99a0-71eda9d1d012",
+          "name": "Get User By ID",
+          "request": {
+            "description": {
+              "content": "Fetches a single user document.\n\n`🔒 Authenticated` — an admin may fetch anyone; a customer may only fetch **their own** id.\n\n### Path params\n\n| Param | Description |\n| --- | --- |\n| `id` | Mongo ObjectId. Defaults to `{{target_user_id}}`; swap in `{{user_id}}` to fetch yourself. |\n\n| Status | Cause |\n| --- | --- |\n| `200` | User document |\n| `403` | `Forbidden` — non-admin requesting somebody else's id |\n| `404` | `User not found` |\n| `400` | Malformed ObjectId — `Invalid _id: <value>` |",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "users",
+                "{{target_user_id}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": []
+        },
+        {
+          "id": "ca1bfad9-246a-4e13-8537-22df7dfc8283",
+          "name": "Update User",
+          "request": {
+            "description": {
+              "content": "Partially updates a user.\n\n`🔒 Authenticated` — an admin may update anyone; a customer may only update **themselves**.\n\n### Body — all fields optional\n\n| Field | Notes |\n| --- | --- |\n| `name` | |\n| `email` | Must stay unique |\n| `password` | Re-hashed through the model's `pre(\"save\")` hook — safe to send in plain text over HTTPS |\n| `phone` | Unique |\n| `address` | Replaces the whole sub-document |\n| `role` | **Silently dropped for non-admins.** Only an admin can promote or demote. |\n\n### Responses\n\n**200 OK**\n```json\n{\n  \"message\": \"User updated successfully\",\n  \"user\": { \"_id\": \"66f0...\", \"name\": \"Updated Name\", \"role\": \"customer\" }\n}\n```\n\n| Status | Cause |\n| --- | --- |\n| `403` | `Forbidden` — non-admin editing another user |\n| `404` | `User not found` |",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "users",
+                "{{target_user_id}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "PATCH",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Updated Name\",\n    \"phone\": \"03211234567\",\n    \"address\": {\n        \"street\": \"9 New Street\",\n        \"city\": \"Islamabad\",\n        \"state\": \"ICT\",\n        \"zip\": \"44000\",\n        \"country\": \"Pakistan\"\n    }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": []
+        },
+        {
+          "id": "8930de1f-2f45-429b-ab66-3fe0dd6ae34c",
+          "name": "Delete User (admin)",
+          "request": {
+            "description": {
+              "content": "Permanently removes a user.\n\n`🔒 Authenticated` · `👑 admin only`\n\nHard delete — there is no soft-delete flag, and the user's orders are **not** cascaded.\n\n| Status | Body |\n| --- | --- |\n| `200` | `{ \"message\": \"User deleted successfully\" }` |\n| `403` | `Forbidden: insufficient role` |\n| `404` | `User not found` |",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "users",
+                "{{target_user_id}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "DELETE"
+          },
+          "response": [],
+          "event": []
+        }
+      ],
+      "event": []
+    },
+    {
+      "id": "7390bdb5-e480-479d-a37b-b1713fe777bf",
+      "name": "Categories",
+      "description": {
+        "content": "Product categories, optionally nested through `parentCategory`.\n\n| Method | Path | Access |\n| --- | --- | --- |\n| `GET` | `/api/categories` | public |\n| `GET` | `/api/categories/:id` | public |\n| `POST` | `/api/categories` | admin · multipart |\n| `PATCH` | `/api/categories/:id` | admin · multipart |\n| `DELETE` | `/api/categories/:id` | admin |\n\n`slug` is generated automatically from `name` (lowercased, spaces → hyphens) whenever the document is saved through `.create()` or `.save()`.",
+        "type": "text/plain"
+      },
+      "item": [
+        {
+          "id": "c6a32761-ddaf-4e45-a25d-1db8c6fb88dc",
+          "name": "Get All Categories",
+          "request": {
+            "description": {
+              "content": "Returns every category as a flat array.\n\n`🌍 Public`\n\nThe test script stores the first category's id in `{{category_id}}`, which the product requests reuse.\n\n**200 OK**\n```json\n{\n  \"message\": \"Categories fetched successfully.\",\n  \"data\": [\n    {\n      \"_id\": \"66f1...\",\n      \"name\": \"Electronics\",\n      \"description\": \"Phones, laptops and accessories\",\n      \"slug\": \"electronics\",\n      \"image\": \"/uploads/66f1a2b3c4d5e6f7a8b9c0d1.png\",\n      \"parentCategory\": null,\n      \"createdAt\": \"2026-08-06T10:20:00.000Z\",\n      \"updatedAt\": \"2026-08-06T10:20:00.000Z\"\n    }\n  ]\n}\n```\n\nBuild the nested tree client-side from `parentCategory`, or prefix `image` with `{{base_url}}` to render it.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "categories"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET",
+            "auth": {
+              "type": "noauth",
+              "noauth": []
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "a08c8072-ab90-4cd9-a228-43a3c378a60e",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const data = pm.response.json().data;",
+                  "if (Array.isArray(data) && data.length > 0) {",
+                  "    pm.environment.set('category_id', data[0]._id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "42969fb2-912f-4537-bc86-6494bee27643",
+          "name": "Get Category By ID",
+          "request": {
+            "description": {
+              "content": "Fetches one category by its Mongo `_id`.\n\n`🌍 Public`\n\nReturns the raw category document (not wrapped in a `data` key, unlike the list route).\n\n| Status | Cause |\n| --- | --- |\n| `200` | Category document |\n| `404` | `Category not found` |\n| `400` | Malformed ObjectId — `Invalid _id: <value>` |",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "categories",
+                "{{category_id}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET",
+            "auth": {
+              "type": "noauth",
+              "noauth": []
+            }
+          },
+          "response": [],
+          "event": []
+        },
+        {
+          "id": "a5a8d2fa-d714-4d5c-8be0-78ce603de005",
+          "name": "Create Category (admin)",
+          "request": {
+            "description": {
+              "content": "Creates a category, optionally with a cover image.\n\n`🔒 Authenticated` · `👑 admin only` · `📎 multipart/form-data`\n\n> Do **not** set `Content-Type` manually — Postman adds the multipart boundary for you.\n\n### Form fields\n\n| Field | Type | Required | Notes |\n| --- | --- | --- | --- |\n| `name` | text | ✅ | Unique |\n| `description` | text | ❌ | |\n| `parentCategory` | text | ❌ | ObjectId of parent; omit or leave blank for a root category |\n| `image` | **file** | ❌ | `image/*` only, ≤ 5 MB. Click *Select Files* in the Body tab. |\n\n### Responses\n\n**201 Created**\n```json\n{\n  \"message\": \"Category created successfully\",\n  \"category\": {\n    \"_id\": \"66f1...\",\n    \"name\": \"Electronics\",\n    \"slug\": \"electronics\",\n    \"image\": \"/uploads/66f1a2b3c4d5e6f7a8b9c0d1.png\",\n    \"parentCategory\": null\n  }\n}\n```\n\n| Status | Cause |\n| --- | --- |\n| `400` | `name already exists` (duplicate `name` or `slug`) |\n| `401` / `403` | Not logged in / not an admin |\n| `500` | `Only image files are allowed`, or file over 5 MB |\n\nThe stored `image` is a **relative** path on purpose — view it at `{{base_url}}/uploads/<filename>`.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "categories"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "description": {
+                    "content": "Required. Unique. Also drives the auto-generated slug.",
+                    "type": "text/plain"
+                  },
+                  "key": "name",
+                  "value": "Electronics",
+                  "type": "text"
+                },
+                {
+                  "description": {
+                    "content": "Optional.",
+                    "type": "text/plain"
+                  },
+                  "key": "description",
+                  "value": "Phones, laptops and accessories",
+                  "type": "text"
+                },
+                {
+                  "disabled": true,
+                  "description": {
+                    "content": "Optional. ObjectId of the parent category — enable this to nest.",
+                    "type": "text/plain"
+                  },
+                  "key": "parentCategory",
+                  "value": "",
+                  "type": "text"
+                },
+                {
+                  "description": {
+                    "content": "Optional. Image file, max 5 MB.",
+                    "type": "text/plain"
+                  },
+                  "key": "image",
+                  "type": "file",
+                  "src": null
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "cf7457cd-17ee-476f-9de3-50ca06e31ef1",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    pm.environment.set('category_id', pm.response.json().category._id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "1076f6ae-fdc4-4060-a8d4-f47c074f2d59",
+          "name": "Update Category (admin)",
+          "request": {
+            "description": {
+              "content": "Partially updates a category.\n\n`🔒 Authenticated` · `👑 admin only` · `📎 multipart/form-data`\n\nAll form fields are optional — send only what changes. Uploading a new `image` replaces the stored path and attempts to delete the old file from disk.\n\n> **Heads-up:** changing `name` through this route does **not** regenerate `slug`, because `findByIdAndUpdate` bypasses the `pre(\"save\")` hook. Send an explicit `slug` field if you need it to match.\n\n| Status | Cause |\n| --- | --- |\n| `200` | `{ \"message\": \"Category updated successfully\", \"category\": { ... } }` |\n| `404` | `Category not found` |\n| `403` | Not an admin |",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "categories",
+                "{{category_id}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "PATCH",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "name",
+                  "value": "Consumer Electronics",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Updated description",
+                  "type": "text"
+                },
+                {
+                  "disabled": true,
+                  "description": {
+                    "content": "Enable and pick a file to replace the current image.",
+                    "type": "text/plain"
+                  },
+                  "key": "image",
+                  "type": "file",
+                  "src": null
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": []
+        },
+        {
+          "id": "80fd4fe6-d196-4720-acf6-5b8e54205651",
+          "name": "Delete Category (admin)",
+          "request": {
+            "description": {
+              "content": "Deletes a category.\n\n`🔒 Authenticated` · `👑 admin only`\n\nHard delete. Child categories and products still referencing this id are **not** cleaned up, so their `category` reference will dangle — repoint them first.\n\n| Status | Body |\n| --- | --- |\n| `200` | `{ \"message\": \"Category deleted successfully\" }` |\n| `404` | `Category not found` |",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "categories",
+                "{{category_id}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "DELETE"
+          },
+          "response": [],
+          "event": []
+        }
+      ],
+      "event": []
+    },
+    {
+      "id": "8bb8a8cf-3497-4661-a06f-e51bb84563b2",
+      "name": "Products",
+      "description": {
+        "content": "Product catalogue. Reads are public; writes are admin-only and accept up to 5 images.\n\n| Method | Path | Access |\n| --- | --- | --- |\n| `GET` | `/api/products` | public · supports search/filter/sort/paginate |\n| `GET` | `/api/products/:id` | public |\n| `POST` | `/api/products` | admin · multipart |\n| `PATCH` | `/api/products/:id` | admin · multipart |\n| `DELETE` | `/api/products/:id` | admin |\n\nThe list endpoint runs through the shared `queryService` helper (`src/utils/queryService.js`) and always applies the server-side filter `isActive: true`, so inactive products are never listed.",
+        "type": "text/plain"
+      },
+      "item": [
+        {
+          "id": "461685d7-720a-4e68-a016-98acaab8f2ac",
+          "name": "Get All Products (search, filter, sort, paginate)",
+          "request": {
+            "description": {
+              "content": "Lists active products with full query support.\n\n`🌍 Public`\n\n### Query parameters\n\n| Param | Example | Effect |\n| --- | --- | --- |\n| `page` | `2` | Page number (min `1`, default `1`) |\n| `limit` | `20` | Page size (default `10`, **max `100`**) |\n| `sort` | `-price`, `category,-price` | Multi-field sort; `-` = descending. Default `-createdAt` |\n| `fields` | `name,price` / `-description,-images` | Include or exclude fields |\n| `search` | `laptop` | Case-insensitive regex over `name` and `description` |\n| `<field>` | `category=66f1...` | Exact-match filter on any schema field |\n| `<field>[gte\\|gt\\|lte\\|lt\\|ne]` | `price[gte]=100` | Range / comparison filter |\n| `<field>[in]` | `status[in]=a,b` | `$in` — comma-separated |\n| `<field>[nin]` | `status[nin]=a,b` | `$nin` — comma-separated |\n\nCombine freely: `?search=phone&price[gte]=200&price[lte]=800&sort=price&page=1&limit=5`\n\n### Response — 200 OK\n```json\n{\n  \"message\": \"Products fetched successfully.\",\n  \"data\": [\n    {\n      \"_id\": \"66f2...\",\n      \"name\": \"Gaming Laptop\",\n      \"description\": \"16GB RAM, RTX 4060\",\n      \"price\": 1499.99,\n      \"category\": { \"_id\": \"66f1...\", \"name\": \"Electronics\", \"slug\": \"electronics\" },\n      \"stock\": 12,\n      \"images\": [\"/uploads/66f2a1....png\"],\n      \"sku\": \"LAP-001\",\n      \"isActive\": true,\n      \"createdAt\": \"2026-08-06T10:25:00.000Z\"\n    }\n  ],\n  \"pagination\": {\n    \"total\": 42,\n    \"page\": 1,\n    \"limit\": 10,\n    \"totalPages\": 5,\n    \"hasNextPage\": true,\n    \"hasPrevPage\": false\n  }\n}\n```\n\n### Security notes\n\n- Keys starting with `$` are stripped from filters, so NoSQL operator injection through query params is blocked.\n- Regex metacharacters in `search` are escaped (ReDoS protection).\n- `isActive: true` is forced server-side and cannot be overridden by the client.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "products"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [
+                {
+                  "description": {
+                    "content": "Page number. Min 1. Default 1.",
+                    "type": "text/plain"
+                  },
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "description": {
+                    "content": "Page size. Default 10, hard cap 100.",
+                    "type": "text/plain"
+                  },
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "description": {
+                    "content": "Comma-separated fields. Prefix with '-' for descending. Default '-createdAt'.",
+                    "type": "text/plain"
+                  },
+                  "key": "sort",
+                  "value": "-createdAt"
+                },
+                {
+                  "disabled": true,
+                  "description": {
+                    "content": "Case-insensitive regex across name and description.",
+                    "type": "text/plain"
+                  },
+                  "key": "search",
+                  "value": "laptop"
+                },
+                {
+                  "disabled": true,
+                  "description": {
+                    "content": "Whitelist fields, or exclude with '-description,-images'.",
+                    "type": "text/plain"
+                  },
+                  "key": "fields",
+                  "value": "name,price,category"
+                },
+                {
+                  "disabled": true,
+                  "description": {
+                    "content": "Exact-match filter on any schema field.",
+                    "type": "text/plain"
+                  },
+                  "key": "category",
+                  "value": "{{category_id}}"
+                },
+                {
+                  "disabled": true,
+                  "description": {
+                    "content": "Range filter — becomes $gte.",
+                    "type": "text/plain"
+                  },
+                  "key": "price[gte]",
+                  "value": "100"
+                },
+                {
+                  "disabled": true,
+                  "description": {
+                    "content": "Range filter — becomes $lte.",
+                    "type": "text/plain"
+                  },
+                  "key": "price[lte]",
+                  "value": "500"
+                },
+                {
+                  "disabled": true,
+                  "description": {
+                    "content": "Only products in stock.",
+                    "type": "text/plain"
+                  },
+                  "key": "stock[gt]",
+                  "value": "0"
+                }
+              ],
+              "variable": []
+            },
+            "method": "GET",
+            "auth": {
+              "type": "noauth",
+              "noauth": []
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "295d505e-1591-497e-8949-a94fa754989c",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('Response is paginated', function () {",
+                  "    pm.expect(body).to.have.property('pagination');",
+                  "    pm.expect(body.data).to.be.an('array');",
+                  "});",
+                  "",
+                  "if (Array.isArray(body.data) && body.data.length > 0) {",
+                  "    pm.environment.set('product_id', body.data[0]._id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "5a138c12-aa12-44e3-bbda-a349d9dcbd42",
+          "name": "Get Product By ID",
+          "request": {
+            "description": {
+              "content": "Fetches one product with its category populated (`name`, `slug` only).\n\n`🌍 Public`\n\nUnlike the list route, this one **ignores** `isActive`, so an inactive product is still retrievable by direct id.\n\n| Status | Cause |\n| --- | --- |\n| `200` | Product document |\n| `404` | `Product not found` |\n| `400` | Malformed ObjectId — `Invalid _id: <value>` |",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "products",
+                "{{product_id}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET",
+            "auth": {
+              "type": "noauth",
+              "noauth": []
+            }
+          },
+          "response": [],
+          "event": []
+        },
+        {
+          "id": "f84e99a7-eeaa-40d3-a0b5-a83dd19fc30e",
+          "name": "Create Product (admin)",
+          "request": {
+            "description": {
+              "content": "Creates a product with up to five images.\n\n`🔒 Authenticated` · `👑 admin only` · `📎 multipart/form-data`\n\n### Form fields\n\n| Field | Type | Required | Notes |\n| --- | --- | --- | --- |\n| `name` | text | ✅ | |\n| `price` | text (number) | ✅ | `>= 0` |\n| `category` | text (ObjectId) | ✅ | Must reference an existing category |\n| `description` | text | ❌ | Indexed for `$text` search alongside `name` |\n| `stock` | text (number) | ❌ | Default `0`, `>= 0` |\n| `sku` | text | ❌ | Unique when present (sparse index) |\n| `isActive` | text (`true`/`false`) | ❌ | Default `true`. `false` hides it from the list route |\n| `images` | **file** | ❌ | **Max 5 files**, `image/*` only, ≤ 5 MB each. Field name must be exactly `images`. |\n\n### Responses\n\n**201 Created**\n```json\n{\n  \"message\": \"Product created successfully\",\n  \"product\": {\n    \"_id\": \"66f2...\",\n    \"name\": \"Gaming Laptop\",\n    \"price\": 1499.99,\n    \"category\": \"66f1...\",\n    \"stock\": 12,\n    \"images\": [\"/uploads/66f2a1....png\", \"/uploads/66f2a2....png\"],\n    \"isActive\": true\n  }\n}\n```\n\n| Status | Cause |\n| --- | --- |\n| `401` / `403` | Not logged in / not an admin |\n| `400` | Validation error (`Price is required`, `Category is required`), non-image file, file > 5 MB, or more than 5 files |",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "products"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "description": {
+                    "content": "Required.",
+                    "type": "text/plain"
+                  },
+                  "key": "name",
+                  "value": "Gaming Laptop",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "16GB RAM, RTX 4060, 1TB SSD",
+                  "type": "text"
+                },
+                {
+                  "description": {
+                    "content": "Required. Must be >= 0.",
+                    "type": "text/plain"
+                  },
+                  "key": "price",
+                  "value": "1499.99",
+                  "type": "text"
+                },
+                {
+                  "description": {
+                    "content": "Required. Category ObjectId.",
+                    "type": "text/plain"
+                  },
+                  "key": "category",
+                  "value": "{{category_id}}",
+                  "type": "text"
+                },
+                {
+                  "description": {
+                    "content": "Optional. Defaults to 0.",
+                    "type": "text/plain"
+                  },
+                  "key": "stock",
+                  "value": "12",
+                  "type": "text"
+                },
+                {
+                  "description": {
+                    "content": "Optional but unique when present.",
+                    "type": "text/plain"
+                  },
+                  "key": "sku",
+                  "value": "LAP-001",
+                  "type": "text"
+                },
+                {
+                  "description": {
+                    "content": "Optional. Defaults to true.",
+                    "type": "text/plain"
+                  },
+                  "key": "isActive",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
+                  "description": {
+                    "content": "Optional. Up to 5 files — select multiple, or add the key repeatedly.",
+                    "type": "text/plain"
+                  },
+                  "key": "images",
+                  "type": "file",
+                  "src": null
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "82172501-1607-4842-b7d7-9d8cdacf6337",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    pm.environment.set('product_id', pm.response.json().product._id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "d6ebf389-669d-4ef3-86df-34b36df2b41d",
+          "name": "Update Product (admin)",
+          "request": {
+            "description": {
+              "content": "Partially updates a product.\n\n`🔒 Authenticated` · `👑 admin only` · `📎 multipart/form-data`\n\nSend only the fields that change. Set `isActive=false` here as the soft-delete alternative to `DELETE`.\n\n> **Images are replaced, not appended.** Uploading any file overwrites the entire `images` array, and the old files stay on disk. Re-upload every image you want to keep.\n\n| Status | Cause |\n| --- | --- |\n| `200` | `{ \"message\": \"Product updated successfully\", \"product\": { ... } }` |\n| `404` | `Product not found` |\n| `403` | Not an admin |",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "products",
+                "{{product_id}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "PATCH",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "price",
+                  "value": "1299.99",
+                  "type": "text"
+                },
+                {
+                  "key": "stock",
+                  "value": "8",
+                  "type": "text"
+                },
+                {
+                  "disabled": true,
+                  "key": "isActive",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
+                  "disabled": true,
+                  "description": {
+                    "content": "Enable to REPLACE the whole images array.",
+                    "type": "text/plain"
+                  },
+                  "key": "images",
+                  "type": "file",
+                  "src": null
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": []
+        },
+        {
+          "id": "3664be85-5427-4831-825f-94cb5cf6b874",
+          "name": "Delete Product (admin)",
+          "request": {
+            "description": {
+              "content": "Permanently deletes a product.\n\n`🔒 Authenticated` · `👑 admin only`\n\nHard delete — uploaded image files are left on disk, and orders referencing this product will populate as `null`. Prefer `PATCH` with `isActive=false` for catalogue cleanup.\n\n| Status | Body |\n| --- | --- |\n| `200` | `{ \"message\": \"Product deleted successfully\" }` |\n| `404` | `Product not found` |",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "products",
+                "{{product_id}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "DELETE"
+          },
+          "response": [],
+          "event": []
+        }
+      ],
+      "event": []
+    },
+    {
+      "id": "b0911e06-d697-410e-ae6f-63c419d78562",
+      "name": "Orders",
+      "description": {
+        "content": "Customer orders. **Every** route requires a token.\n\n| Method | Path | Access |\n| --- | --- | --- |\n| `GET` | `/api/orders` | authenticated — admin sees all, customer sees own |\n| `GET` | `/api/orders/:id` | authenticated — ownership checked |\n| `POST` | `/api/orders` | authenticated |\n| `PATCH` | `/api/orders/:id` | authenticated — ownership checked |\n| `DELETE` | `/api/orders/:id` | authenticated |\n\n### Status values\n\n| Field | Allowed values | Default |\n| --- | --- | --- |\n| `status` | `pending`, `processing`, `shipped`, `delivered`, `cancelled` | `pending` |\n| `paymentMethod` | `card`, `cod`, `paypal` | `cod` |\n| `paymentStatus` | `pending`, `paid`, `failed`, `refunded` | `pending` |",
+        "type": "text/plain"
+      },
+      "item": [
+        {
+          "id": "61883979-5d28-4e08-a0ec-2fdccdabe828",
+          "name": "Get All Orders",
+          "request": {
+            "description": {
+              "content": "Lists orders, scoped by role.\n\n`🔒 Authenticated`\n\n- **admin** → every order in the system\n- **customer** → only orders where `user` matches the token's id\n\nReturns a bare array (no pagination wrapper) with `user` populated as `{ name, email }` and each `items.product` as `{ name, price }`.\n\n**200 OK**\n```json\n[\n  {\n    \"_id\": \"66f3...\",\n    \"user\": { \"_id\": \"66f0...\", \"name\": \"Ali Haider\", \"email\": \"customer@example.com\" },\n    \"items\": [\n      { \"product\": { \"_id\": \"66f2...\", \"name\": \"Gaming Laptop\", \"price\": 1499.99 }, \"quantity\": 1, \"price\": 1499.99 }\n    ],\n    \"totalAmount\": 1499.99,\n    \"status\": \"pending\",\n    \"paymentMethod\": \"cod\",\n    \"paymentStatus\": \"pending\",\n    \"shippingAddress\": { \"street\": \"12 Main Street\", \"city\": \"Karachi\", \"country\": \"Pakistan\" },\n    \"createdAt\": \"2026-08-06T10:30:00.000Z\"\n  }\n]\n```",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "orders"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "8fabfabb-9c2a-4090-b7af-67611af661e3",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "if (Array.isArray(body) && body.length > 0) {",
+                  "    pm.environment.set('order_id', body[0]._id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "6465d287-0e7b-4470-b0e4-d9f5d527c6f0",
+          "name": "Get Order By ID",
+          "request": {
+            "description": {
+              "content": "Fetches one order with `user` and `items.product` populated.\n\n`🔒 Authenticated` — admins can read any order; customers only their own.\n\n| Status | Cause |\n| --- | --- |\n| `200` | Order document |\n| `403` | `Forbidden` — ownership check failed |\n| `404` | `Order not found` |\n\n> **Known issue:** the ownership check compares the *populated* `user` document against the token id, so it never matches for a customer and returns `403` even on their own order. Admins are unaffected. Fix by populating after the check, or by comparing `order.user._id.toString()`.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "orders",
+                "{{order_id}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": []
+        },
+        {
+          "id": "466d59f1-8dd4-4f3f-921a-3fb702e384d0",
+          "name": "Create Order",
+          "request": {
+            "description": {
+              "content": "Places an order for the logged-in user.\n\n`🔒 Authenticated`\n\n### Body\n\n| Field | Type | Required | Notes |\n| --- | --- | --- | --- |\n| `items` | array | ✅ | At least one entry |\n| `items[].product` | ObjectId | ✅ | |\n| `items[].quantity` | number | ✅ | Min `1` |\n| `items[].price` | number | ✅ | Unit price captured at order time |\n| `totalAmount` | number | ✅ | `>= 0` |\n| `shippingAddress` | object | ❌ | `street`, `city`, `state`, `zip`, `country` |\n| `paymentMethod` | enum | ❌ | `card` \\| `cod` \\| `paypal` — default `cod` |\n| `paymentStatus` | enum | ❌ | Default `pending` |\n| `status` | enum | ❌ | Default `pending` |\n| `user` | ObjectId | ❌ | **Admins only** — place an order on someone's behalf. Ignored for customers, who are always bound to their own token id. |\n\n### Responses\n\n**201 Created**\n```json\n{\n  \"message\": \"Order created successfully\",\n  \"order\": {\n    \"_id\": \"66f3...\",\n    \"user\": \"66f0...\",\n    \"items\": [{ \"product\": \"66f2...\", \"quantity\": 1, \"price\": 1499.99 }],\n    \"totalAmount\": 1499.99,\n    \"status\": \"pending\",\n    \"paymentStatus\": \"pending\",\n    \"paymentMethod\": \"cod\"\n  }\n}\n```\n\n| Status | Cause |\n| --- | --- |\n| `401` | No token |\n| `400` | Validation error — empty `items`, missing `totalAmount`, `quantity < 1`, or an invalid enum value |\n\n> **Note:** `price` and `totalAmount` are taken from the request as-is; the server does not recompute them from the product catalogue, and stock is not decremented.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "orders"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"items\": [\n        {\n            \"product\": \"{{product_id}}\",\n            \"quantity\": 1,\n            \"price\": 1499.99\n        }\n    ],\n    \"totalAmount\": 1499.99,\n    \"shippingAddress\": {\n        \"street\": \"12 Main Street\",\n        \"city\": \"Karachi\",\n        \"state\": \"Sindh\",\n        \"zip\": \"75500\",\n        \"country\": \"Pakistan\"\n    },\n    \"paymentMethod\": \"cod\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "6f97d82a-36fe-4db0-9543-a2dfc87b960f",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    pm.environment.set('order_id', pm.response.json().order._id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "4c07ae7f-1bed-4276-9958-9a67e91cd61f",
+          "name": "Update Order",
+          "request": {
+            "description": {
+              "content": "Partially updates an order.\n\n`🔒 Authenticated` — admins can update any order; customers only their own.\n\n### Field permissions\n\n| Field | admin | customer |\n| --- | --- | --- |\n| `status` | ✅ | 🚫 stripped from the payload |\n| `paymentStatus` | ✅ | 🚫 stripped |\n| `paymentMethod` | ✅ | 🚫 stripped |\n| `shippingAddress` | ✅ | ✅ |\n| `items`, `totalAmount` | ✅ | ✅ |\n\nDisallowed fields are silently removed rather than rejected — a customer sending `status` still gets a `200`, but nothing changes.\n\n### Example (customer-safe body)\n```json\n{\n  \"shippingAddress\": { \"city\": \"Lahore\", \"country\": \"Pakistan\" }\n}\n```\n\n| Status | Cause |\n| --- | --- |\n| `200` | `{ \"message\": \"Order updated successfully\", \"order\": { ... } }` |\n| `403` | `Forbidden` — not the owner and not an admin |\n| `404` | `Order not found` |",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "orders",
+                "{{order_id}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "PATCH",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"shipped\",\n    \"paymentStatus\": \"paid\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": []
+        },
+        {
+          "id": "d491a41f-d16f-4b45-b8da-766a50cd72aa",
+          "name": "Delete Order",
+          "request": {
+            "description": {
+              "content": "Permanently deletes an order.\n\n`🔒 Authenticated`\n\n| Status | Body |\n| --- | --- |\n| `200` | `{ \"message\": \"Order deleted successfully\" }` |\n| `404` | `Order not found` |\n\n> **Known issue:** this route performs no ownership or role check — any authenticated user can delete any order by id. Add `authorizeRoles(\"admin\")` or an owner comparison before shipping.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "orders",
+                "{{order_id}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "DELETE"
+          },
+          "response": [],
+          "event": []
+        }
+      ],
+      "event": []
+    },
+    {
+      "id": "1f8567e5-64c1-4989-9daf-31e2e2450ea1",
+      "name": "Static Files",
+      "description": {
+        "content": "Uploaded images are served straight from disk by `express.static`.",
+        "type": "text/plain"
+      },
+      "item": [
+        {
+          "id": "5adb4816-5527-4bf5-a0c5-087c29e8e8e6",
+          "name": "Get Uploaded Image",
+          "request": {
+            "description": {
+              "content": "Serves a file from `backend/uploads/`.\n\n`🌍 Public` — no auth, no rate-limit exemption.\n\nCategory and product records store a relative path like `/uploads/66f1a2b3c4d5e6f7a8b9c0d1.png`. Prefix it with `{{base_url}}` to get a usable URL.\n\nSet `uploaded_file_name` in the environment to the filename portion (for example `66f1a2b3c4d5e6f7a8b9c0d1.png`).\n\n| Status | Cause |\n| --- | --- |\n| `200` | Binary image response |\n| `404` | File not found on disk |\n\nFilenames are generated as a fresh Mongo ObjectId plus the original extension, so uploads never collide or leak the original filename.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "uploads",
+                "{{uploaded_file_name}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET",
+            "auth": {
+              "type": "noauth",
+              "noauth": []
+            }
+          },
+          "response": [],
+          "event": []
+        }
+      ],
+      "event": []
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "type": "string",
+        "value": "{{token}}",
+        "key": "token"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "id": "0540a7c2-440a-40d8-816c-3111c1e007a8",
+        "type": "text/javascript",
+        "exec": [
+          "// Fail fast with a readable message when no environment is selected.",
+          "if (!pm.environment.name) {",
+          "    console.warn('No environment selected. Pick \"bano-qabil-local\" so {{base_url}} and {{token}} resolve.');",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "id": "80812fae-b56f-4a03-8376-b352aa4666b1",
+        "type": "text/javascript",
+        "exec": [
+          "// Shared assertions that apply to every request in the collection.",
+          "pm.test('Response time is under 2000ms', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+          "});",
+          "",
+          "pm.test('Not rate limited', function () {",
+          "    pm.expect(pm.response.code).to.not.eql(429);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [],
+  "info": {
+    "_postman_id": "f3173087-3aad-44f8-b4a0-a6c24f55b744",
+    "name": "bano-qabil-backend",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": {
+      "content": "# Bano Qabil 5.0 — E-Commerce Backend API\n\nREST API for the MERN e-commerce project (Express 5 + Mongoose + JWT).\n\n---\n\n## Base URL\n\nAll requests use the `{{base_url}}` environment variable.\n\n| Environment | Value |\n| --- | --- |\n| Local | `http://localhost:5000` |\n\nThe port comes from `PORT` in `backend/.env` (defaults to `3000` if unset).\n\n## Authentication\n\nThe API uses **JWT Bearer tokens**.\n\n1. Call **Auth → Login**. The saved test script automatically stores the returned JWT into the `{{token}}` environment variable.\n2. Every other protected request inherits `Authorization: Bearer {{token}}` from the collection-level auth — nothing else to do.\n\nToken payload: `{ id, email, role }` · Expiry: **7 days** · Signed with `JWT_SECRET`.\n\n## Roles\n\n| Role | Capabilities |\n| --- | --- |\n| `customer` | Own profile, own orders, read products & categories |\n| `admin` | Everything, plus user management and product/category writes |\n\n## Standard error responses\n\n| Status | Meaning |\n| --- | --- |\n| `400` | Validation failure / duplicate record |\n| `401` | Missing, malformed or expired token |\n| `403` | Authenticated but role or ownership check failed |\n| `404` | Resource not found |\n| `429` | Rate limit exceeded |\n| `500` | Unhandled server error |\n\nError body is always: `{ \"message\": \"...\" }`\n\n## Rate limiting\n\n**100 requests per 15 minutes per IP**, applied globally. Responses include the standard `RateLimit-*` headers. Exceeding it returns `429` with the plain-text body `Too many requests from this IP, please try again later.`\n\n## File uploads\n\nImage uploads use `multipart/form-data` through Multer.\n\n- Images only (`image/*` mimetype), max **5 MB** per file\n- Saved to `backend/uploads/`, stored in Mongo as a relative path such as `/uploads/68f3...c1.png`\n- Served publicly at `{{base_url}}/uploads/<filename>`\n\n## Quick start\n\n1. Select the **bano-qabil-local** environment (top-right of Postman).\n2. Start the server: `npm run dev` inside `backend/`.\n3. Run **Auth → Register (Admin)**, then **Auth → Login** — the token is captured automatically.\n4. Everything else is ready to send.\n\n## Error contract\n\nEvery error response — including 404s for unknown routes — is produced by one central handler and always has this shape:\n\n```json\n{ \"message\": \"...\" }\n```\n\n| Cause | Status |\n| --- | --- |\n| Malformed ObjectId (`CastError`) | `400` — `Invalid _id: <value>` |\n| Schema validation failure | `400` — all failing fields, comma-separated |\n| Duplicate unique field | `400` — `<field> already exists` |\n| Malformed JSON body | `400` — `Invalid JSON body` |\n| Missing/invalid/expired JWT | `401` |\n| Role or ownership check | `403` |\n| Unknown route | `404` — `Route not found - <METHOD> <path>` |\n| Unhandled bug | `500` — generic message in production |",
+      "type": "text/plain"
+    }
+  }
+}
