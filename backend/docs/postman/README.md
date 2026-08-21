@@ -4,7 +4,7 @@ This folder holds the complete, importable Postman documentation for the backend
 
 | File | Purpose |
 | --- | --- |
-| `bano-qabil-backend-api.postman_collection.json` | **Import this one.** The collection — 26 requests across 6 folders, with full markdown docs, example responses and test scripts. Named *Bano Qabil Backend API*. |
+| `bano-qabil-backend-api.postman_collection.json` | **Import this one.** The collection — 35 requests across 7 folders, with full markdown docs, example responses and test scripts. Named *Bano Qabil Backend API*. |
 | `bano-qabil-backend.postman_collection.json` | Identical, but named *bano-qabil-backend*. Only use it if no collection by that name already exists in your workspace. |
 | `bano-qabil-local.postman_environment.json` | Environment holding `base_url`, `token` and the id variables the scripts populate |
 
@@ -74,6 +74,8 @@ Auth → Login                      (sets token)
 Categories → Create Category      (sets category_id)
 Products  → Create Product        (sets product_id, uses category_id)
 Orders    → Create Order          (sets order_id, uses product_id)
+Comments  → Create Comment        (sets comment_id, uses product_id)
+Comments  → Reply To A Comment    (uses comment_id)
 ```
 
 Ids chain automatically through environment variables, so the folders can also be run top-to-bottom with the **Collection Runner**.
@@ -137,5 +139,9 @@ These are documented in detail on the individual requests, but they trip people 
 - **Uploads are multipart.** Do not set `Content-Type` by hand on the category/product create and update requests — Postman needs to generate the multipart boundary itself.
 - **Product images are replaced, not appended,** on `PATCH /api/products/:id`.
 - **`GET /api/products` only returns `isActive: true` products.** Fetching by id ignores that filter.
+- **Comments need a product that is `isActive: true`.** Commenting on a hidden product returns `400`.
+- **One rating per user per product.** A second rated comment returns `400 You have already rated this product` — `PATCH` the first one instead. Text-only comments have no such limit.
+- **Product rating fields are derived.** `averageRating` / `numReviews` are written by the Comment model, never by the product routes — sending them in a product body has no lasting effect.
+- **Deletes cascade.** Deleting a comment removes its replies; deleting a product removes all of its comments.
 - **`GET /api/orders/:id` returns `403` for customers even on their own order** — a known bug in the ownership check (it compares the populated user document instead of its id). Admin tokens work fine.
 - **`DELETE /api/orders/:id` has no ownership or role check** — any logged-in user can delete any order.

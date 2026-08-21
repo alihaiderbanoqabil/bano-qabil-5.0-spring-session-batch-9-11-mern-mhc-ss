@@ -20,6 +20,7 @@ const userRoutes = require("./routes/user.routes");
 const productRoutes = require("./routes/product.routes");
 const categoryRoutes = require("./routes/category.routes");
 const orderRoutes = require("./routes/order.routes");
+const commentRoutes = require("./routes/comment.routes");
 
 // Express ke bahar hone wale stray promise rejections ke liye — sirf LOG karte
 // hain, process band nahi karte. Wajah: kuch third-party SDKs (jaise Cloudinary)
@@ -81,6 +82,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/comments", commentRoutes);
 app.use("/api/media", require("./routes/media.routes"));
 
 // Har route ke baad honi chahiye: upar jo bhi match na ho, wo yahan pakra jata hai.

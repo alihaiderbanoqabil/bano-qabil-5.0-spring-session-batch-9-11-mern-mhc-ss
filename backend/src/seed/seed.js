@@ -26,6 +26,8 @@
  *   - Products spread across every category, with the FIRST nested
  *     category guaranteed at least 50 products
  *   - ~20 fake orders spread across random customers
+ *   - Comments/reviews on a slice of products (with ratings + a few replies),
+ *     which also fills each product's averageRating / numReviews
  * -----------------------------------------------------------------------
  */
 
@@ -37,6 +39,7 @@ const User = require("../models/user.model");
 const Category = require("../models/category.model");
 const Product = require("../models/product.model");
 const Order = require("../models/order.model");
+const Comment = require("../models/comment.model");
 
 // ---------------------------------------------------------------------------
 // Config
@@ -53,6 +56,8 @@ const MIN_PRODUCTS_PER_CATEGORY = 8;
 const MAX_PRODUCTS_PER_CATEGORY = 20;
 const BULK_CATEGORY_PRODUCT_COUNT = 55; // "minimum 50 products" requirement
 const NUM_ORDERS = 20;
+const NUM_COMMENTED_PRODUCTS = 30; // kitne products par comments aayen
+const MAX_COMMENTS_PER_PRODUCT = 5;
 
 const DEFAULT_PASSWORD = "Password@123"; // used for all customers
 const ADMIN_PASSWORD = "Admin@123";
@@ -130,12 +135,13 @@ const CATEGORY_TREE = [
 // Seed functions
 // ---------------------------------------------------------------------------
 async function clearCollections() {
-  console.log("Clearing existing Users, Categories, Products, Orders...");
+  console.log("Clearing existing Users, Categories, Products, Orders, Comments...");
   await Promise.all([
     User.deleteMany({}),
     Category.deleteMany({}),
     Product.deleteMany({}),
     Order.deleteMany({}),
+    Comment.deleteMany({}),
   ]);
 }
 
@@ -311,6 +317,58 @@ async function seedOrders({ customers, products }) {
   return orders;
 }
 
+async function seedComments({ admin, customers, products }) {
+  console.log("Creating comments...");
+
+  // Sirf active products par comments — inactive product par API bhi comment
+  // banane nahi deti, to seed data bhi wesa hi rakhte hain.
+  const activeProducts = products.filter((p) => p.isActive);
+  const chosenProducts = [...activeProducts]
+    .sort(() => 0.5 - Math.random())
+    .slice(0, Math.min(NUM_COMMENTED_PRODUCTS, activeProducts.length));
+
+  let topLevelCount = 0;
+  let replyCount = 0;
+
+  for (const product of chosenProducts) {
+    // Ek user ek product par ek hi rating de sakta hai — is liye har product ke
+    // liye customers shuffle kar ke distinct users pick karte hain.
+    const shuffledCustomers = [...customers].sort(() => 0.5 - Math.random());
+    const commentCount = Math.min(randInt(1, MAX_COMMENTS_PER_PRODUCT), shuffledCustomers.length);
+
+    for (let i = 0; i < commentCount; i++) {
+      const author = shuffledCustomers[i];
+
+      // 80% comments rated review hote hain, baqi sirf sawaal/baat
+      const comment = new Comment({
+        product: product._id,
+        user: author._id,
+        text: faker.lorem.sentences(randInt(1, 3)),
+        rating: faker.datatype.boolean({ probability: 0.8 }) ? randInt(1, 5) : null,
+      });
+      await comment.save(); // save() ka hook product ki rating sync karta hai
+      topLevelCount++;
+
+      // Kabhi kabhi admin reply karta hai (seller response)
+      if (faker.datatype.boolean({ probability: 0.3 })) {
+        const reply = new Comment({
+          product: product._id,
+          user: admin._id,
+          text: faker.lorem.sentence(),
+          parentComment: comment._id, // reply par rating nahi
+        });
+        await reply.save();
+        replyCount++;
+      }
+    }
+  }
+
+  console.log(
+    `  -> ${topLevelCount} comments + ${replyCount} replies created on ${chosenProducts.length} products`
+  );
+  console.log("  -> products ke averageRating / numReviews save hooks se bhar gaye");
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -328,6 +386,7 @@ async function main() {
     const { baseCategories, childCategories } = await seedCategories();
     const products = await seedProducts({ baseCategories, childCategories });
     await seedOrders({ customers, products });
+    await seedComments({ admin, customers, products });
 
     console.log("\nSeeding complete!");
     console.log("--------------------------------------------------");

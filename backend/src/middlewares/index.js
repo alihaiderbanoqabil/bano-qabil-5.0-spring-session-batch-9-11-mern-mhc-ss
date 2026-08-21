@@ -64,6 +64,27 @@ const authenticate = (req, res, next) => {
     next();
 };
 
+/**
+ * authenticate ka narm version: token ho to req.user set kar deta hai, na ho
+ * (ya kharab ho) to bhi request aage chali jati hai.
+ *
+ * Public routes ke liye jahan logged-in user ko thora zyada dikhana ho —
+ * jaise comments list, jahan admin hidden comments bhi dekh sakta hai.
+ */
+const optionalAuthenticate = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+        try {
+            req.user = jwt.verify(authHeader.split(" ")[1], process.env.JWT_SECRET);
+        } catch {
+            // Invalid/expired token yahan error nahi hai — guest samjho
+        }
+    }
+
+    next();
+};
+
 const authorizeRoles = (...roles) => (req, res, next) => {
     if (!req.user) {
         throw new AppError("Authentication required", 401);
@@ -79,6 +100,7 @@ const authorizeRoles = (...roles) => (req, res, next) => {
 module.exports = {
     upload,
     authenticate,
+    optionalAuthenticate,
     authorizeRoles,
     uploadSingle,
     uploadMultiple,

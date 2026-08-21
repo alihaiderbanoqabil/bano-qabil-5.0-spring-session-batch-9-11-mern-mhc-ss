@@ -132,8 +132,8 @@ const login = async (req, res) => {
     return res.json({
         message: "Login successfully",
         // ...(isWeb ? {} : { token }),
-        token,
-        user: {
+        // token,
+        data: {
             id: user._id,
             name: user.name,
             email: user.email,

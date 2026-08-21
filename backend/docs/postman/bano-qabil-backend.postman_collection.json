@@ -1452,6 +1452,431 @@
       "event": []
     },
     {
+      "id": "61e77ff2-35d5-40f8-b9c6-00cd60e96bdf",
+      "name": "Comments",
+      "description": {
+        "content": "Product comments & reviews. A comment always belongs to **one product** and **one user**.\n\n| Method | Path | Access |\n| --- | --- | --- |\n| `GET` | `/api/comments` | 🌍 public — admin token also reveals hidden comments |\n| `GET` | `/api/comments/:id` | 🌍 public — one comment + its replies |\n| `GET` | `/api/products/:productId/comments` | 🌍 public — threads + rating summary |\n| `POST` | `/api/comments` | 🔒 authenticated |\n| `POST` | `/api/products/:productId/comments` | 🔒 authenticated |\n| `PATCH` | `/api/comments/:id` | 🔒 owner, or admin |\n| `DELETE` | `/api/comments/:id` | 🔒 owner, or admin |\n\n### Schema\n\n| Field | Type | Notes |\n| --- | --- | --- |\n| `product` | ObjectId → `Product` | Required. Product must exist and be `isActive: true` |\n| `user` | ObjectId → `User` | Always taken from the token — a client-supplied `user` is ignored |\n| `text` | string | Required, 2–1000 characters |\n| `rating` | number \\| null | `1`–`5`. `null` = a plain comment that does not affect the average |\n| `parentComment` | ObjectId → `Comment` | `null` = top-level. Set = a reply (**one level deep only**) |\n| `isActive` | boolean | Default `true`. Only an admin can flip it — a hidden comment disappears from public reads and drops out of the average |\n\n### Rules\n\n- A user may leave **many** text-only comments on a product but only **one rating** — change it with `PATCH` instead of posting again.\n- A reply can never carry a rating; one is silently dropped on create, and rejected with `400` on update.\n- Deleting a comment also deletes its replies; deleting a product deletes all of its comments.\n\n### Link to Product\n\n`Product` keeps two derived fields, `averageRating` and `numReviews`, which the Comment model recalculates after every create / update / delete. Because they live on the product document you can sort and filter with them directly:\n\n- `GET /api/products?sort=-averageRating`\n- `GET /api/products?averageRating[gte]=4`\n\n`GET /api/products/:id` also returns a `comments` array — the 10 newest visible top-level comments, populated through a virtual (comment ids are **not** stored inside the product document).",
+        "type": "text/plain"
+      },
+      "event": [],
+      "item": [
+        {
+          "id": "64def9bf-bbfe-4007-93a3-5079e4ffc587",
+          "name": "Get All Comments",
+          "request": {
+            "description": {
+              "content": "Flat, paginated list of every comment across all products. Same query engine as products (search / filter / sort / paginate / field-limit).\n\n`🌍 Public` — only `isActive: true` comments. Send an **admin** token to also see hidden ones.\n\n### Useful queries\n\n| Query | Effect |\n| --- | --- |\n| `?product=<id>` | Only that product's comments |\n| `?user=<id>` | Only that user's comments |\n| `?rating[gte]=4` | 4 and 5 star comments |\n| `?rating=null` | Comments with no rating (questions, remarks) |\n| `?parentComment=null` | Top-level only — hides replies |\n| `?search=battery` | Case-insensitive regex over `text` |\n| `?sort=-rating,createdAt` | Highest rated first, then oldest |\n\n### Response — 200 OK\n```json\n{\n  \"message\": \"Comments fetched successfully.\",\n  \"data\": [\n    {\n      \"_id\": \"66f5...\",\n      \"product\": { \"_id\": \"66f2...\", \"name\": \"Gaming Laptop\", \"price\": 1499.99 },\n      \"user\": { \"_id\": \"66f0...\", \"name\": \"Ali\" },\n      \"text\": \"Bohat acha laptop hai, battery timing kamaal.\",\n      \"rating\": 5,\n      \"parentComment\": null,\n      \"isActive\": true,\n      \"createdAt\": \"2026-08-21T08:06:26.979Z\"\n    }\n  ],\n  \"pagination\": { \"total\": 3, \"page\": 1, \"limit\": 10, \"totalPages\": 1, \"hasNextPage\": false, \"hasPrevPage\": false }\n}\n```\n\n> `isActive` is pinned server-side for non-admins, so `?isActive=false` cannot be used to peek at hidden comments.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "comments"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [
+                {
+                  "description": {
+                    "content": "Page number. Min 1. Default 1.",
+                    "type": "text/plain"
+                  },
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "description": {
+                    "content": "Page size. Default 10, max 100.",
+                    "type": "text/plain"
+                  },
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "description": {
+                    "content": "Multi-field sort; `-` = descending.",
+                    "type": "text/plain"
+                  },
+                  "key": "sort",
+                  "value": "-createdAt"
+                },
+                {
+                  "description": {
+                    "content": "Filter by product ObjectId.",
+                    "type": "text/plain"
+                  },
+                  "key": "product",
+                  "value": ""
+                },
+                {
+                  "description": {
+                    "content": "Only comments rated this or higher.",
+                    "type": "text/plain"
+                  },
+                  "key": "rating[gte]",
+                  "value": ""
+                },
+                {
+                  "description": {
+                    "content": "Regex search over comment text.",
+                    "type": "text/plain"
+                  },
+                  "key": "search",
+                  "value": ""
+                }
+              ],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": []
+        },
+        {
+          "id": "b0068a20-a6ac-45b9-a8c6-cea4deb08bda",
+          "name": "Get Product Comments (threads + summary)",
+          "request": {
+            "description": {
+              "content": "One product's comment threads: top-level comments paginated, each with its replies nested, plus a star breakdown.\n\n`🌍 Public`\n\nPagination applies to the **top-level** comments; replies for the returned page are fetched and nested in one extra query. `product`, `parentComment` and `isActive` are pinned server-side and ignored if you pass them.\n\n### Response — 200 OK\n```json\n{\n  \"message\": \"Comments fetched successfully.\",\n  \"product\": { \"_id\": \"66f2...\", \"name\": \"Gaming Laptop\", \"averageRating\": 4.5, \"numReviews\": 2 },\n  \"summary\": { \"average\": 4.5, \"total\": 2, \"breakdown\": { \"1\": 0, \"2\": 0, \"3\": 0, \"4\": 1, \"5\": 1 } },\n  \"data\": [\n    {\n      \"_id\": \"66f5...\",\n      \"user\": { \"_id\": \"66f0...\", \"name\": \"Ali\" },\n      \"text\": \"Bohat acha laptop hai, battery timing kamaal.\",\n      \"rating\": 5,\n      \"parentComment\": null,\n      \"replies\": [\n        { \"_id\": \"66f6...\", \"user\": { \"_id\": \"66ef...\", \"name\": \"Admin\" }, \"text\": \"Shukriya feedback ka!\", \"rating\": null }\n      ]\n    }\n  ],\n  \"pagination\": { \"total\": 3, \"page\": 1, \"limit\": 10, \"totalPages\": 1, \"hasNextPage\": false, \"hasPrevPage\": false }\n}\n```\n\n| Status | Cause |\n| --- | --- |\n| `404` | Product does not exist |\n| `400` | `productId` is not a valid ObjectId |\n\n`summary.average` and `product.averageRating` are computed two different ways (live aggregate vs. stored field) and should always agree — handy when checking that the sync hooks are firing.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "products",
+                "{{product_id}}",
+                "comments"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [
+                {
+                  "description": {
+                    "content": "Page of top-level comments.",
+                    "type": "text/plain"
+                  },
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "description": {
+                    "content": "Top-level comments per page.",
+                    "type": "text/plain"
+                  },
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "description": {
+                    "content": "Newest first by default.",
+                    "type": "text/plain"
+                  },
+                  "key": "sort",
+                  "value": "-createdAt"
+                },
+                {
+                  "description": {
+                    "content": "Only threads whose top comment is rated this or higher.",
+                    "type": "text/plain"
+                  },
+                  "key": "rating[gte]",
+                  "value": ""
+                },
+                {
+                  "description": {
+                    "content": "Regex search over comment text.",
+                    "type": "text/plain"
+                  },
+                  "key": "search",
+                  "value": ""
+                }
+              ],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "5decaf82-314e-421f-b4ba-247a9a2032c0",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "",
+                  "    // Stored field (product) aur live aggregate (summary) match karne chahiyen —",
+                  "    // yani Comment ke rating-sync hooks theek chal rahe hain.",
+                  "    pm.test('averageRating matches the live summary', function () {",
+                  "        pm.expect(body.product.averageRating).to.eql(body.summary.average);",
+                  "        pm.expect(body.product.numReviews).to.eql(body.summary.total);",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "fb57fbf6-9c0d-411a-bd75-543865edc432",
+          "name": "Get Comment By ID",
+          "request": {
+            "description": {
+              "content": "One comment with `product` and `user` populated, plus its `replies` array.\n\n`🌍 Public` — a hidden (`isActive: false`) comment returns `404` unless an admin token is sent.\n\n| Status | Cause |\n| --- | --- |\n| `404` | No such comment, or it is hidden and you are not an admin |\n| `400` | Malformed ObjectId |",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "comments",
+                "{{comment_id}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": []
+        },
+        {
+          "id": "c4b20697-dfcf-4bac-9028-6cca2e64bd39",
+          "name": "Create Comment / Review",
+          "request": {
+            "description": {
+              "content": "Adds a comment on a product. `user` comes from the token.\n\n`🔒 Authenticated` · `application/json`\n\n### Body\n\n| Field | Type | Required | Notes |\n| --- | --- | --- | --- |\n| `product` | ObjectId | ✅ | Skip it when posting to `/api/products/:productId/comments` |\n| `text` | string | ✅ | 2–1000 characters |\n| `rating` | number | ❌ | `1`–`5`. Omit for a plain comment |\n| `parentComment` | ObjectId | ❌ | Makes this a reply; any `rating` sent with it is dropped |\n\n### Responses\n\n**201 Created**\n```json\n{\n  \"message\": \"Comment created successfully\",\n  \"comment\": {\n    \"_id\": \"66f5...\",\n    \"product\": \"66f2...\",\n    \"user\": { \"_id\": \"66f0...\", \"name\": \"Ali\" },\n    \"text\": \"Bohat acha laptop hai, battery timing kamaal.\",\n    \"rating\": 5,\n    \"parentComment\": null,\n    \"isActive\": true\n  }\n}\n```\n\n| Status | Cause |\n| --- | --- |\n| `401` | No token |\n| `404` | `Product not found` / `Parent comment not found` |\n| `400` | `Comment text is required`, `Comment is too short`, `Rating must be between 1 and 5`, `Product is required` |\n| `400` | `You have already rated this product` — PATCH your existing review instead |\n| `400` | `Cannot comment on an inactive product` |\n| `400` | `You can only reply to a top-level comment` — threads are one level deep |\n| `400` | `Parent comment belongs to a different product` |\n\nThe product's `averageRating` / `numReviews` update automatically via the model's post-save hook.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "comments"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"product\": \"{{product_id}}\",\n  \"text\": \"Bohat acha laptop hai, battery timing kamaal.\",\n  \"rating\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "61154ce7-48b6-4369-a829-f65aa2ea67b7",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    // Reply / Update / Delete requests isi id ko use karte hain.",
+                  "    pm.environment.set('comment_id', pm.response.json().comment._id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "d944eee8-54fc-4b12-9932-3e5b8dbc3ce6",
+          "name": "Reply To A Comment",
+          "request": {
+            "description": {
+              "content": "A reply is just a comment with `parentComment` set — same route, same handler.\n\n`🔒 Authenticated` · `application/json`\n\nTypical use: the admin answering a customer question under their comment. Replies never carry a rating, so they cannot move the product average. Only top-level comments can be replied to (`400` otherwise).",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "comments"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"product\": \"{{product_id}}\",\n  \"parentComment\": \"{{comment_id}}\",\n  \"text\": \"Shukriya feedback ka! Warranty 1 saal ki hai.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": []
+        },
+        {
+          "id": "dd116eec-ea07-400e-bb2e-c3786926e5db",
+          "name": "Create Comment (nested product route)",
+          "request": {
+            "description": {
+              "content": "Same handler as **Create Comment**, with the product taken from the URL instead of the body — convenient for a product detail page.\n\n`🔒 Authenticated` · `application/json`\n\n`product` in the body is ignored here; the `:productId` path segment wins.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "products",
+                "{{product_id}}",
+                "comments"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Packing achi thi, delivery time par mili.\",\n  \"rating\": 4\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "27fc56cc-9978-4cc8-97ab-0f140ec2a67f",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "63b27696-0ccc-4877-8110-92b3222ac9a4",
+          "name": "Update Comment",
+          "request": {
+            "description": {
+              "content": "Edits a comment. Owner or admin only.\n\n`🔒 Authenticated`\n\n### Body — all fields optional\n\n| Field | Who | Notes |\n| --- | --- | --- |\n| `text` | owner / admin | 2–1000 characters |\n| `rating` | owner / admin | `1`–`5`, or `null` to drop the rating. Rejected on a reply |\n| `isActive` | **admin only** | `false` hides the comment and removes it from the average; `true` restores it |\n\n| Status | Cause |\n| --- | --- |\n| `403` | `Forbidden` — not the owner and not an admin |\n| `403` | `Forbidden: only admin can hide or restore comments` |\n| `400` | `A reply cannot have a rating` |\n| `400` | `You have already rated this product` — adding a rating when another rated review by the same user already exists |\n| `404` | No such comment |\n\nSaved with `document.save()`, so the rating-sync hook runs and the product's `averageRating` follows along.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "comments",
+                "{{comment_id}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "PATCH",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Update: fan thora awaz karta hai.\",\n  \"rating\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": []
+        },
+        {
+          "id": "0ec0279a-d79e-4d71-856c-719c3f158f9c",
+          "name": "Moderate Comment (admin — hide/restore)",
+          "request": {
+            "description": {
+              "content": "Soft-delete for moderation: keeps the row, hides it from public reads and excludes it from `averageRating` / `numReviews`.\n\n`🔒 Authenticated` · `👑 admin only`\n\nSend `{\"isActive\": true}` to restore. A customer sending `isActive` gets `403`.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "comments",
+                "{{comment_id}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "PATCH",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": []
+        },
+        {
+          "id": "997531f6-73e6-451e-bbad-9e5afb458548",
+          "name": "Delete Comment",
+          "request": {
+            "description": {
+              "content": "Hard-deletes a comment **and all of its replies**. Owner or admin.\n\n`🔒 Authenticated`\n\n### Response — 200 OK\n```json\n{ \"message\": \"Comment deleted successfully\", \"deletedCount\": 2 }\n```\n\n`deletedCount` = the comment plus the replies that went with it.\n\n| Status | Cause |\n| --- | --- |\n| `403` | Not the owner and not an admin |\n| `404` | No such comment |\n\nPrefer **Moderate Comment** when you want the comment kept for the record.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "comments",
+                "{{comment_id}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "DELETE"
+          },
+          "response": [],
+          "event": []
+        }
+      ]
+    },
+    {
       "id": "1f8567e5-64c1-4989-9daf-31e2e2450ea1",
       "name": "Static Files",
       "description": {
@@ -1539,7 +1964,7 @@
     "name": "bano-qabil-backend",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "description": {
-      "content": "# Bano Qabil 5.0 — E-Commerce Backend API\n\nREST API for the MERN e-commerce project (Express 5 + Mongoose + JWT).\n\n---\n\n## Base URL\n\nAll requests use the `{{base_url}}` environment variable.\n\n| Environment | Value |\n| --- | --- |\n| Local | `http://localhost:5000` |\n\nThe port comes from `PORT` in `backend/.env` (defaults to `3000` if unset).\n\n## Authentication\n\nThe API uses **JWT Bearer tokens**.\n\n1. Call **Auth → Login**. The saved test script automatically stores the returned JWT into the `{{token}}` environment variable.\n2. Every other protected request inherits `Authorization: Bearer {{token}}` from the collection-level auth — nothing else to do.\n\nToken payload: `{ id, email, role }` · Expiry: **7 days** · Signed with `JWT_SECRET`.\n\n## Roles\n\n| Role | Capabilities |\n| --- | --- |\n| `customer` | Own profile, own orders, read products & categories |\n| `admin` | Everything, plus user management and product/category writes |\n\n## Standard error responses\n\n| Status | Meaning |\n| --- | --- |\n| `400` | Validation failure / duplicate record |\n| `401` | Missing, malformed or expired token |\n| `403` | Authenticated but role or ownership check failed |\n| `404` | Resource not found |\n| `429` | Rate limit exceeded |\n| `500` | Unhandled server error |\n\nError body is always: `{ \"message\": \"...\" }`\n\n## Rate limiting\n\n**100 requests per 15 minutes per IP**, applied globally. Responses include the standard `RateLimit-*` headers. Exceeding it returns `429` with the plain-text body `Too many requests from this IP, please try again later.`\n\n## File uploads\n\nImage uploads use `multipart/form-data` through Multer.\n\n- Images only (`image/*` mimetype), max **5 MB** per file\n- Saved to `backend/uploads/`, stored in Mongo as a relative path such as `/uploads/68f3...c1.png`\n- Served publicly at `{{base_url}}/uploads/<filename>`\n\n## Quick start\n\n1. Select the **bano-qabil-local** environment (top-right of Postman).\n2. Start the server: `npm run dev` inside `backend/`.\n3. Run **Auth → Register (Admin)**, then **Auth → Login** — the token is captured automatically.\n4. Everything else is ready to send.\n\n## Error contract\n\nEvery error response — including 404s for unknown routes — is produced by one central handler and always has this shape:\n\n```json\n{ \"message\": \"...\" }\n```\n\n| Cause | Status |\n| --- | --- |\n| Malformed ObjectId (`CastError`) | `400` — `Invalid _id: <value>` |\n| Schema validation failure | `400` — all failing fields, comma-separated |\n| Duplicate unique field | `400` — `<field> already exists` |\n| Malformed JSON body | `400` — `Invalid JSON body` |\n| Missing/invalid/expired JWT | `401` |\n| Role or ownership check | `403` |\n| Unknown route | `404` — `Route not found - <METHOD> <path>` |\n| Unhandled bug | `500` — generic message in production |",
+      "content": "# Bano Qabil 5.0 — E-Commerce Backend API\n\nREST API for the MERN e-commerce project (Express 5 + Mongoose + JWT).\n\n---\n\n## Base URL\n\nAll requests use the `{{base_url}}` environment variable.\n\n| Environment | Value |\n| --- | --- |\n| Local | `http://localhost:5000` |\n\nThe port comes from `PORT` in `backend/.env` (defaults to `3000` if unset).\n\n## Authentication\n\nThe API uses **JWT Bearer tokens**.\n\n1. Call **Auth → Login**. The saved test script automatically stores the returned JWT into the `{{token}}` environment variable.\n2. Every other protected request inherits `Authorization: Bearer {{token}}` from the collection-level auth — nothing else to do.\n\nToken payload: `{ id, email, role }` · Expiry: **7 days** · Signed with `JWT_SECRET`.\n\n## Roles\n\n| Role | Capabilities |\n| --- | --- |\n| `customer` | Own profile, own orders, read products & categories |\n| `admin` | Everything, plus user management and product/category writes |\n\n## Standard error responses\n\n| Status | Meaning |\n| --- | --- |\n| `400` | Validation failure / duplicate record |\n| `401` | Missing, malformed or expired token |\n| `403` | Authenticated but role or ownership check failed |\n| `404` | Resource not found |\n| `429` | Rate limit exceeded |\n| `500` | Unhandled server error |\n\nError body is always: `{ \"message\": \"...\" }`\n\n## Rate limiting\n\n**100 requests per 15 minutes per IP**, applied globally. Responses include the standard `RateLimit-*` headers. Exceeding it returns `429` with the plain-text body `Too many requests from this IP, please try again later.`\n\n## File uploads\n\nImage uploads use `multipart/form-data` through Multer.\n\n- Images only (`image/*` mimetype), max **5 MB** per file\n- Saved to `backend/uploads/`, stored in Mongo as a relative path such as `/uploads/68f3...c1.png`\n- Served publicly at `{{base_url}}/uploads/<filename>`\n\n## Comments & ratings\n\n`Comment` links a **product** and a **user**, and refers to itself through `parentComment` for one-level-deep replies. Every create / update / delete recalculates the product's `averageRating` and `numReviews`, so product listings can sort and filter on rating without touching the comments collection.\n\nSee the **Comments** folder for the full contract.\n\n## Quick start\n\n1. Select the **bano-qabil-local** environment (top-right of Postman).\n2. Start the server: `npm run dev` inside `backend/`.\n3. Run **Auth → Register (Admin)**, then **Auth → Login** — the token is captured automatically.\n4. Everything else is ready to send.\n\n## Error contract\n\nEvery error response — including 404s for unknown routes — is produced by one central handler and always has this shape:\n\n```json\n{ \"message\": \"...\" }\n```\n\n| Cause | Status |\n| --- | --- |\n| Malformed ObjectId (`CastError`) | `400` — `Invalid _id: <value>` |\n| Schema validation failure | `400` — all failing fields, comma-separated |\n| Duplicate unique field | `400` — `<field> already exists` |\n| Malformed JSON body | `400` — `Invalid JSON body` |\n| Missing/invalid/expired JWT | `401` |\n| Role or ownership check | `403` |\n| Unknown route | `404` — `Route not found - <METHOD> <path>` |\n| Unhandled bug | `500` — generic message in production |",
       "type": "text/plain"
     }
   }

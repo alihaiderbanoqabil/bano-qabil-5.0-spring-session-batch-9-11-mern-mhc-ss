@@ -1,4 +1,5 @@
 const Product = require("../models/product.model");
+const Comment = require("../models/comment.model");
 const AppError = require("../utils/AppError");
 const { queryService } = require("../utils/queryService");
 
@@ -30,7 +31,19 @@ const getProducts = async (req, res) => {
 };
 
 const getProductById = async (req, res) => {
-    const product = await Product.findById(req.params.id).populate("category", "name slug");
+    // `comments` product ka virtual hai (product.model.js dekho) — comments
+    // product document ke andar store nahi hote, reverse populate hote hain.
+    // Yahan sirf 10 latest top-level comments preview ke liye laate hain;
+    // poori list + replies GET /api/products/:productId/comments se milti hai.
+    const product = await Product.findById(req.params.id)
+        .populate("category", "name slug")
+        .populate({
+            path: "comments",
+            match: { isActive: true, parentComment: null },
+            options: { sort: { createdAt: -1 }, limit: 10 },
+            populate: { path: "user", select: "name" },
+        });
+
     if (!product) {
         throw new AppError("Product not found", 404);
     }
@@ -69,7 +82,11 @@ const deleteProduct = async (req, res) => {
         throw new AppError("Product not found", 404);
     }
 
-    return res.json({ message: "Product deleted successfully" });
+    // Product gaya to uske comments bhi — warna DB mein aise comments reh
+    // jatey hain jinka product hi maujood nahi (orphan documents).
+    const { deletedCount } = await Comment.deleteMany({ product: product._id });
+
+    return res.json({ message: "Product deleted successfully", deletedComments: deletedCount });
 };
 
 module.exports = {
