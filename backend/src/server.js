@@ -9,6 +9,9 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 // https://www.npmjs.com/package/express-xss-sanitizer
 const { xss } = require('express-xss-sanitizer');
+// https://www.npmjs.com/package/cookie-parser
+// req.cookies bharta hai — httpOnly auth cookie parhne ke liye zaroori hai
+const cookieParser = require('cookie-parser');
 
 const path = require("path");
 
@@ -54,10 +57,13 @@ app.use(helmet());
 app.use(xss());
 
 // CORS — configure allowed origins as needed
+// NOTE: auth cookie ke sath origin '*' kaam nahi karta — credentials: true ke
+// sath browser exact origin maangta hai. Is liye har frontend port yahan likhna
+// parta hai (5173 = Vite ka default, 3000 = CRA/Next).
 app.use(cors({
-    origin: ['http://localhost:3000'], // replace with your allowed origin(s), or '*' for all
+    origin: ['http://localhost:3000', 'http://localhost:5173'], // replace with your allowed origin(s)
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    credentials: true, // only if you need cookies/auth headers cross-origin
+    credentials: true, // cookies/auth headers cross-origin bhejne ke liye zaroori
 }));
 
 // Rate limiting — protects against brute force / abuse
@@ -74,6 +80,8 @@ app.use(limiter);
 app.use(express.json()); 
 // Middleware to parse URL-encoded request bodies
 app.use(express.urlencoded({ extended: true })); 
+// Cookies ko req.cookies mein parse karta hai (auth token cookie ke liye)
+app.use(cookieParser()); 
 // Serve static files from the uploads directory
 app.use("/uploads", express.static(path.join(__dirname, "../uploads"))); 
 

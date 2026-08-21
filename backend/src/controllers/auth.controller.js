@@ -39,18 +39,24 @@ const createToken = (user, expiryTime = "7d") => {
 //     );
 // };
 
+// Cookie ki options ek hi jagah. clearCookie ko bhi bilkul yehi options
+// (maxAge ke bagair) chahiye hoti hain — warna browser cookie ko match nahi
+// karta aur logout par wo delete hi nahi hoti.
+const tokenCookieOptions = () => {
+    const isProduction = process.env.NODE_ENV === "production";
+
+    return {
+        httpOnly: true,                           // JavaScript isay parh nahi sakta (XSS protection)
+        secure: isProduction,                     // HTTPS only in production
+        sameSite: isProduction ? "none" : "lax",  // "none" ke sath secure: true zaroori hai
+        path: "/",
+    };
+};
+
 // Sends the JWT as an httpOnly cookie so the browser attaches it automatically.
 // httpOnly keeps it out of reach of JavaScript, which protects it from XSS.
 const setTokenCookie = (res, token) => {
-    const isProduction = process.env.NODE_ENV === "production";
-
-    res.cookie("token", token, {
-        httpOnly: true,
-        secure: isProduction,                     // HTTPS only in production
-        sameSite: isProduction ? "none" : "lax",  // "none" needs secure: true
-        maxAge: TOKEN_MAX_AGE,
-        path: "/",
-    });
+    res.cookie("token", token, { ...tokenCookieOptions(), maxAge: TOKEN_MAX_AGE });
 };
 
 const register = async (req, res) => {
@@ -126,13 +132,17 @@ const login = async (req, res) => {
     if (!user.isEmailVerified) {
         throw new AppError("Please verify your email before logging in", 403);
     }
-    const token = createToken(user);
-    // const isWeb = req.query.app === "web"
-    // if (isWeb) setTokenCookie(res, token)
+    // Token response body mein NAHI jata — sirf httpOnly cookie mein set hota
+    // hai. Is se frontend ko token localStorage mein rakhne ki zarorat nahi
+    // parti (jahan se XSS use chura sakta hai), aur browser har request ke
+    // sath cookie khud bhej deta hai.
+    //
+    // Frontend ko `credentials: "include"` (ya axios mein `withCredentials: true`)
+    // lagana zaroori hai, warna browser cookie na bhejega na rakhega.
+    setTokenCookie(res, createToken(user));
+
     return res.json({
         message: "Login successfully",
-        // ...(isWeb ? {} : { token }),
-        // token,
         data: {
             id: user._id,
             name: user.name,
@@ -141,6 +151,24 @@ const login = async (req, res) => {
             isEmailVerified: user.isEmailVerified,
         },
     });
+};
+
+/**
+ * Logout — cookie hata deta hai.
+ *
+ * Jaan boojh kar `authenticate` ke bagair rakha hai: agar token expire ho chuka
+ * ho to bhi browser se cookie nikalni chahiye. Isi liye ye request kabhi fail
+ * nahi karti, chahe user pehle se logged out ho.
+ *
+ * Note: JWT stateless hai — hum server par kuch "revoke" nahi kar rahe. Agar
+ * kisi ne cookie ki value pehle copy kar li ho to wo token apni expiry tak
+ * valid rehta hai. Sach much revoke karne ke liye DB mein blacklist ya
+ * refresh-token wala tareeqa chahiye hota hai.
+ */
+const logout = async (req, res) => {
+    res.clearCookie("token", tokenCookieOptions());
+
+    return res.json({ message: "Logout successfully" });
 };
 
 const getMe = async (req, res) => {
@@ -190,6 +218,7 @@ const verifyEmail = async (req, res) => {
 module.exports = {
     register,
     login,
+    logout,
     getMe,
     verifyEmail,
 };

@@ -1,9 +1,39 @@
 const User = require("../models/user.model");
 const AppError = require("../utils/AppError");
+const { queryService } = require("../utils/queryService");
+
+// Schema mein ye fields `select: false` hain, magar queryService `?fields=`
+// ko seedha .select() mein deta hai — is liye `?fields=+password` unhe wapis
+// on kar sakta tha. Yahan aisi koshish ko filter kar dete hain.
+const SENSITIVE_FIELDS = ["password", "emailVerificationToken"];
+
+const stripSensitiveFields = (query) => {
+    const safe = { ...query };
+
+    // ?fields=name,+password -> ?fields=name
+    if (typeof safe.fields === "string") {
+        safe.fields = safe.fields
+            .split(",")
+            .filter((field) => !SENSITIVE_FIELDS.includes(field.trim().replace(/^[+-]/, "")))
+            .join(",");
+    }
+
+    // ?emailVerificationToken[ne]=null jaisi filtering se accounts probe na ho saken
+    SENSITIVE_FIELDS.forEach((field) => delete safe[field]);
+
+    return safe;
+};
 
 const getUsers = async (req, res) => {
-    const users = await User.find().select("-password");
-    return res.json({ message: "Users get successfully", data: users });
+    // Sirf admin yahan tak pohanchta hai (route par authorizeRoles("admin") laga hai),
+    // is liye baseFilter ki zarorat nahi — poori list allowed hai.
+    const result = await queryService(User, stripSensitiveFields(req.query), {
+        searchFields: ["name", "email"],   // ?search=ali -> name ya email mein
+        // password / emailVerificationToken schema mein select: false hain,
+        // is liye response mein khud hi nahi aate.
+    });
+
+    return res.json({ message: "Users get successfully", ...result });
 };
 
 const getUserById = async (req, res) => {

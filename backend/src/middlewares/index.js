@@ -49,14 +49,29 @@ const uploadSingle = (fieldName = "image") => upload.single(fieldName);
 const uploadMultiple = (fieldName = "images", maxCount = 5) => upload.array(fieldName, maxCount);
 
 
-const authenticate = (req, res, next) => {
-    const authHeader = req.headers.authorization;
+/**
+ * Token do jagah se aa sakta hai:
+ *  1. httpOnly cookie — browser (login khud set karta hai, JS ko dikhti nahi)
+ *  2. Authorization: Bearer <token> header — Postman, mobile app, server-to-server
+ *
+ * Cookie ko pehle dekhte hain kyunke browser wahi bhejta hai; header fallback
+ * ke tor par rakha hua hai taake purane clients aur API tests chalte rahen.
+ */
+const getTokenFromRequest = (req) => {
+    if (req.cookies?.token) return req.cookies.token;
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) return authHeader.split(" ")[1];
+
+    return null;
+};
+
+const authenticate = (req, res, next) => {
+    const token = getTokenFromRequest(req);
+
+    if (!token) {
         throw new AppError("Authentication required", 401);
     }
-
-    const token = authHeader.split(" ")[1];
 
     // jwt.verify JsonWebTokenError / TokenExpiredError throw karta hai. Express
     // middleware ke sync throws khud pakar leta hai, aur errorHandler dono ko 401 bana deta hai.
@@ -72,11 +87,11 @@ const authenticate = (req, res, next) => {
  * jaise comments list, jahan admin hidden comments bhi dekh sakta hai.
  */
 const optionalAuthenticate = (req, res, next) => {
-    const authHeader = req.headers.authorization;
+    const token = getTokenFromRequest(req);
 
-    if (authHeader && authHeader.startsWith("Bearer ")) {
+    if (token) {
         try {
-            req.user = jwt.verify(authHeader.split(" ")[1], process.env.JWT_SECRET);
+            req.user = jwt.verify(token, process.env.JWT_SECRET);
         } catch {
             // Invalid/expired token yahan error nahi hai — guest samjho
         }
@@ -99,6 +114,7 @@ const authorizeRoles = (...roles) => (req, res, next) => {
 
 module.exports = {
     upload,
+    getTokenFromRequest,
     authenticate,
     optionalAuthenticate,
     authorizeRoles,

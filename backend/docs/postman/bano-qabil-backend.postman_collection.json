@@ -209,7 +209,7 @@
           "name": "Login",
           "request": {
             "description": {
-              "content": "Exchanges email + password for a JWT.\n\n`Public` — no token required.\n\n> **This is the request that powers the whole collection.** Its test script writes `token`, `user_id` and `user_role` into the active environment, so run it first.\n\n### Body\n\n| Field | Type | Required |\n| --- | --- | --- |\n| `email` | string | ✅ |\n| `password` | string | ✅ |\n\n### Responses\n\n**200 OK**\n```json\n{\n  \"message\": \"Login successfully\",\n  \"token\": \"<your-jwt-token-here>\",\n  \"user\": {\n    \"id\": \"66f0...\",\n    \"name\": \"Admin User\",\n    \"email\": \"admin@example.com\",\n    \"role\": \"admin\",\n    \"isEmailVerified\": true\n  }\n}\n```\n\n| Status | Body | Cause |\n| --- | --- | --- |\n| `400` | `Email and password are required` | Missing field |\n| `401` | `Invalid email or password` | Wrong credentials (same message for unknown email — deliberate) |\n| `403` | `Please verify your email before logging in` | `isEmailVerified` is `false` |\n\n### Cookie\n\nThe response also sets an **httpOnly** cookie:\n\n```\nSet-Cookie: token=<jwt>; Max-Age=604800; Path=/; HttpOnly; SameSite=Lax\n```\n\nPostman stores it automatically (see the **Cookies** link under Send), so subsequent requests carry it. Browser clients must opt in — `credentials: \"include\"` with fetch, or `withCredentials: true` with axios.\n\nThe cookie is `secure` + `SameSite=None` when `NODE_ENV=production`, and `SameSite=Lax` in development.",
+              "content": "Exchanges email + password for a session **cookie**.\n\n`🌍 Public` — no token required.\n\n> **This is the request that powers the whole collection.** The JWT is no longer in the response body — it comes back as an httpOnly cookie which Postman stores in its cookie jar and replays automatically.\n\n### Body\n\n| Field | Type | Required |\n| --- | --- | --- |\n| `email` | string | ✅ |\n| `password` | string | ✅ |\n\n### Responses\n\n**200 OK**\n```json\n{\n  \"message\": \"Login successfully\",\n  \"data\": {\n    \"id\": \"66f0...\",\n    \"name\": \"Admin User\",\n    \"email\": \"admin@example.com\",\n    \"role\": \"admin\",\n    \"isEmailVerified\": true\n  }\n}\n```\n\n| Status | Body | Cause |\n| --- | --- | --- |\n| `400` | `Email and password are required` | Missing field |\n| `401` | `Invalid email or password` | Wrong credentials (same message for unknown email — deliberate) |\n| `403` | `Please verify your email before logging in` | `isEmailVerified` is `false` |\n\n### The cookie\n\n```\nSet-Cookie: token=<jwt>; Max-Age=604800; Path=/; HttpOnly; SameSite=Lax\n```\n\n- **httpOnly** — page JavaScript cannot read it, so an XSS bug cannot steal the session.\n- **Max-Age 604800** — 7 days, the same as the JWT expiry.\n- `secure` + `SameSite=None` when `NODE_ENV=production`; `SameSite=Lax` in development.\n\nNothing sets a failed login's cookie — a `401` / `403` response carries no `Set-Cookie` at all.\n\n### Clients\n\n| Client | What to do |\n| --- | --- |\n| Postman | Nothing — the cookie jar handles it (**Cookies** link under Send) |\n| Browser (fetch) | `fetch(url, { credentials: \"include\" })` |\n| Browser (axios) | `axios.defaults.withCredentials = true` |\n| Mobile / server-to-server | Read the `Set-Cookie` value, or keep using `Authorization: Bearer <jwt>` — the header path still works |\n\nCORS must name your exact frontend origin (`http://localhost:3000` and `http://localhost:5173` are allowed by default) — `origin: '*'` cannot be combined with credentials.",
               "type": "text/plain"
             },
             "url": {
@@ -335,7 +335,7 @@
             {
               "listen": "test",
               "script": {
-                "id": "c893b4ee-96f2-4e8e-8d90-d880d3fc6664",
+                "id": "adb22536-dd41-4e75-ab1a-97ceb88d7d0e",
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status is 200', function () {",
@@ -345,17 +345,66 @@
                   "if (pm.response.code === 200) {",
                   "    const body = pm.response.json();",
                   "",
-                  "    pm.test('Response contains a JWT', function () {",
-                  "        pm.expect(body.token).to.be.a('string').and.not.empty;",
+                  "    pm.test('Token is NOT in the response body', function () {",
+                  "        pm.expect(body.token).to.be.undefined;",
                   "    });",
                   "",
-                  "    // Persist credentials for every other request in the collection.",
-                  "    pm.environment.set('token', body.token);",
-                  "    pm.environment.set('user_id', body.user.id);",
-                  "    pm.environment.set('user_role', body.user.role);",
+                  "    pm.test('Session cookie was set', function () {",
+                  "        pm.expect(pm.cookies.has('token')).to.be.true;",
+                  "    });",
                   "",
-                  "    console.log('Token saved to environment. Role:', body.user.role);",
+                  "    // Postman cookie jar khud replay karta hai; ye copy sirf un requests ke",
+                  "    // liye hai jo collection-level `Bearer {{token}}` header use karti hain.",
+                  "    if (pm.cookies.has('token')) {",
+                  "        pm.environment.set('token', pm.cookies.get('token'));",
+                  "    }",
+                  "",
+                  "    pm.environment.set('user_id', body.data.id);",
+                  "    pm.environment.set('user_role', body.data.role);",
+                  "",
+                  "    console.log('Logged in as', body.data.email, '- role:', body.data.role);",
                   "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "ec5d2c32-26bc-49c9-80e6-e04132a88d4f",
+          "name": "Logout",
+          "request": {
+            "description": {
+              "content": "Clears the session cookie.\n\n`🌍 Public` — deliberately **not** behind `authenticate`.\n\nWhy no auth: if the JWT has already expired, the user still needs the cookie removed from their browser. Requiring a valid token would leave a dead cookie sitting there. Logging out twice is therefore harmless — it always answers `200`.\n\n### Response — 200 OK\n```json\n{ \"message\": \"Logout successfully\" }\n```\n\n```\nSet-Cookie: token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax\n```\n\n> **JWT is stateless.** This removes the cookie from the client; it does not revoke the token server-side. Anyone who copied the raw JWT beforehand can keep using it until it expires. Real revocation needs a token blacklist or short-lived access tokens plus refresh tokens.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "POST"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "e6529fe9-9791-4a4e-a348-eecafe6dbf82",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// Stale value ko environment mein chhorna confusing hota hai.",
+                  "pm.environment.set('token', '');"
                 ]
               }
             }
@@ -366,7 +415,7 @@
           "name": "Get Current User (Me)",
           "request": {
             "description": {
-              "content": "Returns the full user document for whoever owns `{{token}}`.\n\n`🔒 Authenticated` — any role.\n\n### Responses\n\n**200 OK**\n```json\n{\n  \"_id\": \"66f0...\",\n  \"name\": \"Admin User\",\n  \"email\": \"admin@example.com\",\n  \"role\": \"admin\",\n  \"address\": { \"city\": \"Karachi\", \"country\": \"Pakistan\" },\n  \"phone\": \"03009999999\",\n  \"isEmailVerified\": true,\n  \"createdAt\": \"2026-08-06T10:15:00.000Z\",\n  \"updatedAt\": \"2026-08-06T10:15:00.000Z\"\n}\n```\n\n| Status | Cause |\n| --- | --- |\n| `401` | `Authentication required` (no `Bearer` header), `Invalid token`, or `Token expired` |\n| `404` | Token is valid but the user was deleted |",
+              "content": "Returns the full user document for whoever owns the current session.\n\n`🔒 Authenticated` — any role. The token is read from the `token` cookie first, then from an `Authorization: Bearer` header.\n\n### Responses\n\n**200 OK**\n```json\n{\n  \"_id\": \"66f0...\",\n  \"name\": \"Admin User\",\n  \"email\": \"admin@example.com\",\n  \"role\": \"admin\",\n  \"address\": { \"city\": \"Karachi\", \"country\": \"Pakistan\" },\n  \"phone\": \"03009999999\",\n  \"isEmailVerified\": true,\n  \"createdAt\": \"2026-08-06T10:15:00.000Z\",\n  \"updatedAt\": \"2026-08-06T10:15:00.000Z\"\n}\n```\n\n| Status | Cause |\n| --- | --- |\n| `401` | `Authentication required` (neither cookie nor `Bearer` header), `Invalid token`, or `Token expired` |\n| `404` | Token is valid but the user was deleted |",
               "type": "text/plain"
             },
             "url": {
@@ -513,7 +562,7 @@
           "name": "Get All Users (admin)",
           "request": {
             "description": {
-              "content": "Lists every user in the system.\n\n`🔒 Authenticated` · `👑 admin only`\n\nNo pagination or filtering on this route — it returns all users at once.\n\n**200 OK**\n```json\n{\n  \"message\": \"Users get successfully\",\n  \"data\": [\n    {\n      \"_id\": \"66f0...\",\n      \"name\": \"Admin User\",\n      \"email\": \"admin@example.com\",\n      \"role\": \"admin\",\n      \"isEmailVerified\": true,\n      \"createdAt\": \"2026-08-06T10:15:00.000Z\",\n      \"updatedAt\": \"2026-08-06T10:15:00.000Z\"\n    }\n  ]\n}\n```\n\nPasswords are excluded by the schema (`select: false`) and again by `.select(\"-password\")`.",
+              "content": "Lists users with the shared query engine — search, filter, sort, paginate, field-limit.\n\n`🔒 Authenticated` · `👑 admin only`\n\n### Useful queries\n\n| Query | Effect |\n| --- | --- |\n| `?search=ali` | Regex over `name` and `email` |\n| `?role=admin` | Only admins |\n| `?isEmailVerified=false` | Accounts that never verified |\n| `?sort=name&limit=50` | Alphabetical, 50 per page |\n| `?fields=name,email,role` | Slim rows for a table |\n| `?createdAt[gte]=2026-01-01` | Signed up this year |\n\n### Response — 200 OK\n```json\n{\n  \"message\": \"Users get successfully\",\n  \"data\": [\n    {\n      \"_id\": \"66f0...\",\n      \"name\": \"Admin User\",\n      \"email\": \"admin@example.com\",\n      \"role\": \"admin\",\n      \"isEmailVerified\": true,\n      \"createdAt\": \"2026-08-06T10:15:00.000Z\"\n    }\n  ],\n  \"pagination\": { \"total\": 11, \"page\": 1, \"limit\": 10, \"totalPages\": 2, \"hasNextPage\": true, \"hasPrevPage\": false }\n}\n```\n\n`password` and `emailVerificationToken` are `select: false` in the schema, and the controller also strips them out of `?fields=` — so `?fields=name,+password` cannot pull a hash back into the response.",
               "type": "text/plain"
             },
             "url": {
@@ -524,7 +573,56 @@
               "host": [
                 "{{base_url}}"
               ],
-              "query": [],
+              "query": [
+                {
+                  "description": {
+                    "content": "Page number. Min 1. Default 1.",
+                    "type": "text/plain"
+                  },
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "description": {
+                    "content": "Page size. Default 10, max 100.",
+                    "type": "text/plain"
+                  },
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "description": {
+                    "content": "Multi-field sort; `-` = descending.",
+                    "type": "text/plain"
+                  },
+                  "key": "sort",
+                  "value": "-createdAt"
+                },
+                {
+                  "description": {
+                    "content": "Regex over name and email.",
+                    "type": "text/plain"
+                  },
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "description": {
+                    "content": "`customer` or `admin`.",
+                    "type": "text/plain"
+                  },
+                  "key": "role",
+                  "value": ""
+                },
+                {
+                  "description": {
+                    "content": "Comma-separated field list.",
+                    "type": "text/plain"
+                  },
+                  "key": "fields",
+                  "value": ""
+                }
+              ],
               "variable": []
             },
             "method": "GET"
@@ -655,7 +753,7 @@
           "name": "Get All Categories",
           "request": {
             "description": {
-              "content": "Returns every category as a flat array.\n\n`🌍 Public`\n\nThe test script stores the first category's id in `{{category_id}}`, which the product requests reuse.\n\n**200 OK**\n```json\n{\n  \"message\": \"Categories fetched successfully.\",\n  \"data\": [\n    {\n      \"_id\": \"66f1...\",\n      \"name\": \"Electronics\",\n      \"description\": \"Phones, laptops and accessories\",\n      \"slug\": \"electronics\",\n      \"image\": \"/uploads/66f1a2b3c4d5e6f7a8b9c0d1.png\",\n      \"parentCategory\": null,\n      \"createdAt\": \"2026-08-06T10:20:00.000Z\",\n      \"updatedAt\": \"2026-08-06T10:20:00.000Z\"\n    }\n  ]\n}\n```\n\nBuild the nested tree client-side from `parentCategory`, or prefix `image` with `{{base_url}}` to render it.",
+              "content": "Returns categories in one of **two modes**. The response tells you which one you got via `mode`.\n\n`🌍 Public`\n\n### 1. `tree` — the default\n\nEvery category, nested through `parentCategory`, each parent carrying a `subCategories` array. This is what a navigation menu needs, so it is never paginated: half a tree loses the parent–child links.\n\n```json\n{\n  \"message\": \"Categories fetched successfully.\",\n  \"mode\": \"tree\",\n  \"data\": [\n    {\n      \"_id\": \"66f1...\",\n      \"name\": \"Electronics\",\n      \"slug\": \"electronics\",\n      \"image\": \"/uploads/66f1a2b3c4d5e6f7a8b9c0d1.png\",\n      \"parentCategory\": null,\n      \"subCategories\": [\n        { \"_id\": \"66f2...\", \"name\": \"Laptops\", \"slug\": \"laptops\", \"parentCategory\": \"66f1...\", \"subCategories\": [] }\n      ]\n    }\n  ]\n}\n```\n\n### 2. `flat` — the shared query engine\n\nSearch, filter, sort, paginate and field-limit, with `parentCategory` populated to `{ name, slug }`. Meant for an admin table.\n\nSwitch on with `?flat=true`, or simply by sending `search`, `page` or `limit` — those three are meaningless in tree mode, so they flip it automatically.\n\n```json\n{\n  \"message\": \"Categories fetched successfully.\",\n  \"mode\": \"flat\",\n  \"data\": [\n    { \"_id\": \"66f2...\", \"name\": \"Laptops\", \"parentCategory\": { \"_id\": \"66f1...\", \"name\": \"Electronics\", \"slug\": \"electronics\" } }\n  ],\n  \"pagination\": { \"total\": 15, \"page\": 1, \"limit\": 10, \"totalPages\": 2, \"hasNextPage\": true, \"hasPrevPage\": false }\n}\n```\n\n| Query | Effect |\n| --- | --- |\n| `?flat=true` | Flat list, no other params needed |\n| `?search=lap` | Regex over `name` and `description` (implies flat) |\n| `?parentCategory=66f1...` | Direct children of one category |\n| `?parentCategory=null` | Root categories only |\n| `?sort=name&limit=50` | Alphabetical page of 50 |\n\nThe test script stores the first item's `_id` in `{{category_id}}`, which the product requests reuse — it works in either mode.\n\nPrefix `image` with `{{base_url}}` to render it.",
               "type": "text/plain"
             },
             "url": {
@@ -666,7 +764,48 @@
               "host": [
                 "{{base_url}}"
               ],
-              "query": [],
+              "query": [
+                {
+                  "description": {
+                    "content": "`true` = flat paginated list instead of the nested tree.",
+                    "type": "text/plain"
+                  },
+                  "key": "flat",
+                  "value": ""
+                },
+                {
+                  "description": {
+                    "content": "Regex over name and description (implies flat mode).",
+                    "type": "text/plain"
+                  },
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "description": {
+                    "content": "Page number (implies flat mode).",
+                    "type": "text/plain"
+                  },
+                  "key": "page",
+                  "value": ""
+                },
+                {
+                  "description": {
+                    "content": "Page size (implies flat mode).",
+                    "type": "text/plain"
+                  },
+                  "key": "limit",
+                  "value": ""
+                },
+                {
+                  "description": {
+                    "content": "e.g. `name` or `-createdAt`.",
+                    "type": "text/plain"
+                  },
+                  "key": "sort",
+                  "value": ""
+                }
+              ],
               "variable": []
             },
             "method": "GET",
@@ -1964,7 +2103,7 @@
     "name": "bano-qabil-backend",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "description": {
-      "content": "# Bano Qabil 5.0 — E-Commerce Backend API\n\nREST API for the MERN e-commerce project (Express 5 + Mongoose + JWT).\n\n---\n\n## Base URL\n\nAll requests use the `{{base_url}}` environment variable.\n\n| Environment | Value |\n| --- | --- |\n| Local | `http://localhost:5000` |\n\nThe port comes from `PORT` in `backend/.env` (defaults to `3000` if unset).\n\n## Authentication\n\nThe API uses **JWT Bearer tokens**.\n\n1. Call **Auth → Login**. The saved test script automatically stores the returned JWT into the `{{token}}` environment variable.\n2. Every other protected request inherits `Authorization: Bearer {{token}}` from the collection-level auth — nothing else to do.\n\nToken payload: `{ id, email, role }` · Expiry: **7 days** · Signed with `JWT_SECRET`.\n\n## Roles\n\n| Role | Capabilities |\n| --- | --- |\n| `customer` | Own profile, own orders, read products & categories |\n| `admin` | Everything, plus user management and product/category writes |\n\n## Standard error responses\n\n| Status | Meaning |\n| --- | --- |\n| `400` | Validation failure / duplicate record |\n| `401` | Missing, malformed or expired token |\n| `403` | Authenticated but role or ownership check failed |\n| `404` | Resource not found |\n| `429` | Rate limit exceeded |\n| `500` | Unhandled server error |\n\nError body is always: `{ \"message\": \"...\" }`\n\n## Rate limiting\n\n**100 requests per 15 minutes per IP**, applied globally. Responses include the standard `RateLimit-*` headers. Exceeding it returns `429` with the plain-text body `Too many requests from this IP, please try again later.`\n\n## File uploads\n\nImage uploads use `multipart/form-data` through Multer.\n\n- Images only (`image/*` mimetype), max **5 MB** per file\n- Saved to `backend/uploads/`, stored in Mongo as a relative path such as `/uploads/68f3...c1.png`\n- Served publicly at `{{base_url}}/uploads/<filename>`\n\n## Comments & ratings\n\n`Comment` links a **product** and a **user**, and refers to itself through `parentComment` for one-level-deep replies. Every create / update / delete recalculates the product's `averageRating` and `numReviews`, so product listings can sort and filter on rating without touching the comments collection.\n\nSee the **Comments** folder for the full contract.\n\n## Quick start\n\n1. Select the **bano-qabil-local** environment (top-right of Postman).\n2. Start the server: `npm run dev` inside `backend/`.\n3. Run **Auth → Register (Admin)**, then **Auth → Login** — the token is captured automatically.\n4. Everything else is ready to send.\n\n## Error contract\n\nEvery error response — including 404s for unknown routes — is produced by one central handler and always has this shape:\n\n```json\n{ \"message\": \"...\" }\n```\n\n| Cause | Status |\n| --- | --- |\n| Malformed ObjectId (`CastError`) | `400` — `Invalid _id: <value>` |\n| Schema validation failure | `400` — all failing fields, comma-separated |\n| Duplicate unique field | `400` — `<field> already exists` |\n| Malformed JSON body | `400` — `Invalid JSON body` |\n| Missing/invalid/expired JWT | `401` |\n| Role or ownership check | `403` |\n| Unknown route | `404` — `Route not found - <METHOD> <path>` |\n| Unhandled bug | `500` — generic message in production |",
+      "content": "# Bano Qabil 5.0 — E-Commerce Backend API\n\nREST API for the MERN e-commerce project (Express 5 + Mongoose + JWT).\n\n---\n\n## Base URL\n\nAll requests use the `{{base_url}}` environment variable.\n\n| Environment | Value |\n| --- | --- |\n| Local | `http://localhost:5000` |\n\nThe port comes from `PORT` in `backend/.env` (defaults to `3000` if unset).\n\n## Authentication\n\nThe API uses a **JWT in an httpOnly cookie**.\n\n1. Call **Auth → Login**. The response body contains **no token** — the JWT arrives as `Set-Cookie: token=<jwt>; HttpOnly`. Postman keeps it in its cookie jar and replays it on every later request.\n2. Call **Auth → Logout** to clear it.\n\n`authenticate` reads the token from the `token` cookie first, and falls back to an `Authorization: Bearer <jwt>` header — so mobile apps, server-to-server calls and the collection-level bearer auth all keep working.\n\nToken payload: `{ id, email, role }` · Expiry: **7 days** · Signed with `JWT_SECRET`.\n\nWhy a cookie: `httpOnly` means page JavaScript cannot read the token, so an XSS bug cannot walk off with the session the way it can with `localStorage`. The trade-off is CSRF exposure — mitigated here by `SameSite=Lax` (`None` + `secure` in production) and a CORS allow-list of exact origins.\n\n## Query engine on list routes\n\n`GET /api/products`, `/api/orders`, `/api/comments`, `/api/users` and `/api/categories?flat=true` all run through one shared helper, so they take the same parameters:\n\n| Param | Example | Effect |\n| --- | --- | --- |\n| `page` / `limit` | `?page=2&limit=20` | Pagination — default `10`, max `100` |\n| `sort` | `?sort=-createdAt,name` | Multi-field sort, `-` = descending |\n| `fields` | `?fields=name,price` | Include, or `?fields=-description` to exclude |\n| `search` | `?search=laptop` | Case-insensitive regex over that route's search fields |\n| `<field>` | `?role=admin` | Equality filter |\n| `<field>[gte\\|gt\\|lte\\|lt\\|ne]` | `?price[gte]=100` | Comparison |\n| `<field>[in\\|nin]` | `?status[in]=pending,paid` | Comma-separated list |\n\nEvery one of them answers with the same envelope:\n\n```json\n{ \"message\": \"...\", \"data\": [ ... ], \"pagination\": { \"total\": 42, \"page\": 1, \"limit\": 10, \"totalPages\": 5, \"hasNextPage\": true, \"hasPrevPage\": false } }\n```\n\n## Roles\n\n| Role | Capabilities |\n| --- | --- |\n| `customer` | Own profile, own orders, read products & categories |\n| `admin` | Everything, plus user management and product/category writes |\n\n## Standard error responses\n\n| Status | Meaning |\n| --- | --- |\n| `400` | Validation failure / duplicate record |\n| `401` | Missing, malformed or expired token |\n| `403` | Authenticated but role or ownership check failed |\n| `404` | Resource not found |\n| `429` | Rate limit exceeded |\n| `500` | Unhandled server error |\n\nError body is always: `{ \"message\": \"...\" }`\n\n## Rate limiting\n\n**100 requests per 15 minutes per IP**, applied globally. Responses include the standard `RateLimit-*` headers. Exceeding it returns `429` with the plain-text body `Too many requests from this IP, please try again later.`\n\n## File uploads\n\nImage uploads use `multipart/form-data` through Multer.\n\n- Images only (`image/*` mimetype), max **5 MB** per file\n- Saved to `backend/uploads/`, stored in Mongo as a relative path such as `/uploads/68f3...c1.png`\n- Served publicly at `{{base_url}}/uploads/<filename>`\n\n## Comments & ratings\n\n`Comment` links a **product** and a **user**, and refers to itself through `parentComment` for one-level-deep replies. Every create / update / delete recalculates the product's `averageRating` and `numReviews`, so product listings can sort and filter on rating without touching the comments collection.\n\nSee the **Comments** folder for the full contract.\n\n## Quick start\n\n1. Select the **bano-qabil-local** environment (top-right of Postman).\n2. Start the server: `npm run dev` inside `backend/`.\n3. Run **Auth → Register (Admin)**, then **Auth → Login** — the token is captured automatically.\n4. Everything else is ready to send.\n\n## Error contract\n\nEvery error response — including 404s for unknown routes — is produced by one central handler and always has this shape:\n\n```json\n{ \"message\": \"...\" }\n```\n\n| Cause | Status |\n| --- | --- |\n| Malformed ObjectId (`CastError`) | `400` — `Invalid _id: <value>` |\n| Schema validation failure | `400` — all failing fields, comma-separated |\n| Duplicate unique field | `400` — `<field> already exists` |\n| Malformed JSON body | `400` — `Invalid JSON body` |\n| Missing/invalid/expired JWT | `401` |\n| Role or ownership check | `403` |\n| Unknown route | `404` — `Route not found - <METHOD> <path>` |\n| Unhandled bug | `500` — generic message in production |",
       "type": "text/plain"
     }
   }

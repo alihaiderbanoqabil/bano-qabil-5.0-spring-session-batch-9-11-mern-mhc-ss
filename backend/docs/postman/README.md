@@ -4,7 +4,7 @@ This folder holds the complete, importable Postman documentation for the backend
 
 | File | Purpose |
 | --- | --- |
-| `bano-qabil-backend-api.postman_collection.json` | **Import this one.** The collection — 35 requests across 7 folders, with full markdown docs, example responses and test scripts. Named *Bano Qabil Backend API*. |
+| `bano-qabil-backend-api.postman_collection.json` | **Import this one.** The collection — 36 requests across 7 folders, with full markdown docs, example responses and test scripts. Named *Bano Qabil Backend API*. |
 | `bano-qabil-backend.postman_collection.json` | Identical, but named *bano-qabil-backend*. Only use it if no collection by that name already exists in your workspace. |
 | `bano-qabil-local.postman_environment.json` | Environment holding `base_url`, `token` and the id variables the scripts populate |
 
@@ -59,18 +59,21 @@ EMAIL_FROM=
 
 If your `PORT` is not `5000`, update `base_url` in the environment.
 
-## 4. Get a token
+## 4. Get a session
 
 1. **Auth → Register (Admin)** — one time per fresh database.
-2. **Auth → Login** — the test script writes the JWT into the `token` environment variable automatically.
+2. **Auth → Login** — the JWT comes back as an **httpOnly cookie**, not in the response body. Postman stores it in its cookie jar and replays it on every later request.
+3. **Auth → Logout** — clears the cookie.
 
-Every protected request inherits `Authorization: Bearer {{token}}` from collection-level auth, so there is nothing to paste anywhere.
+The login script also copies the cookie value into the `token` environment variable, so the collection-level `Authorization: Bearer {{token}}` header keeps working for anything that prefers the header path. Either one authenticates.
+
+> Cookie not being sent? Check the **Cookies** link under the Send button — the jar must hold `token` for `localhost`. Turning off *Settings → General → Automatically follow redirects* has no effect on this; clearing the jar does.
 
 ## 5. Suggested run order
 
 ```
 Auth → Register (Admin)
-Auth → Login                      (sets token)
+Auth → Login                      (sets the session cookie)
 Categories → Create Category      (sets category_id)
 Products  → Create Product        (sets product_id, uses category_id)
 Orders    → Create Order          (sets order_id, uses product_id)
@@ -135,10 +138,15 @@ Rules to keep it that way:
 These are documented in detail on the individual requests, but they trip people up first:
 
 - **Email verification gate.** Registering with an explicit `role: "customer"` leaves `isEmailVerified: false`, and login then returns `403`. Omit `role` entirely (or use `role: "admin"`) to get an account you can log in with immediately.
-- **Rate limit.** 100 requests per 15 minutes per IP, applied globally. A full Collection Runner pass uses ~26 of them.
+- **Rate limit.** 100 requests per 15 minutes per IP, applied globally. A full Collection Runner pass uses ~36 of them.
+- **Login returns no token.** It is an httpOnly cookie now, and the user object comes back under `data` (register still uses `user`). A frontend must send `credentials: "include"` / `withCredentials: true`, and its origin must be in the CORS allow-list in `server.js` (`localhost:3000` and `localhost:5173` by default).
+- **Logout is not authenticated on purpose** — an expired token must still be able to clear its own cookie, so the route always answers `200`.
+- **Logout does not revoke the JWT.** It removes the cookie; a copied token stays valid until it expires.
 - **Uploads are multipart.** Do not set `Content-Type` by hand on the category/product create and update requests — Postman needs to generate the multipart boundary itself.
 - **Product images are replaced, not appended,** on `PATCH /api/products/:id`.
 - **`GET /api/products` only returns `isActive: true` products.** Fetching by id ignores that filter.
+- **`GET /api/users` is paginated now** — 10 per page by default, so an old client reading `data` as the complete list will only see the first page.
+- **`GET /api/categories` returns a nested tree by default** and switches to a flat paginated list when you send `flat=true`, `search`, `page` or `limit`. The `mode` field in the response says which one you got.
 - **Comments need a product that is `isActive: true`.** Commenting on a hidden product returns `400`.
 - **One rating per user per product.** A second rated comment returns `400 You have already rated this product` — `PATCH` the first one instead. Text-only comments have no such limit.
 - **Product rating fields are derived.** `averageRating` / `numReviews` are written by the Comment model, never by the product routes — sending them in a product body has no lasting effect.

@@ -2,6 +2,7 @@ const fs = require("fs/promises");
 const path = require("path");
 const Category = require("../models/category.model");
 const AppError = require("../utils/AppError");
+const { queryService } = require("../utils/queryService");
 
 // Helper: delete a file if it exists, given the stored "/uploads/xxx.png" style path
 const deleteImageFile = async (imagePath) => {
@@ -34,7 +35,33 @@ const buildCategoryTree = (categories, parentId = null) => {
         }));
 };
 
+/**
+ * Categories do shakal mein mil sakti hain:
+ *
+ *  1. TREE (default) — poori nested list, jo navigation menu banane ke liye
+ *     chahiye hoti hai. Yahan pagination ka koi matlab nahi: aadhi tree bhejne
+ *     se parent-child ka rishta toot jata hai, is liye queryService use nahi karte.
+ *
+ *  2. FLAT — queryService wali normal list: search, filter, sort, pagination,
+ *     field limiting. Admin panel ke table ke liye. Ye tab chalta hai jab
+ *     ?flat=true ho, ya koi aisa param aaye jo sirf flat mode mein hi kaam
+ *     karta hai (search / page / limit).
+ */
+const wantsFlatList = (query) =>
+    query.flat === "true" || Boolean(query.search || query.page || query.limit);
+
 const getCategories = async (req, res) => {
+    if (wantsFlatList(req.query)) {
+        const { flat, ...query } = req.query; // `flat` sirf switch hai, filter nahi
+
+        const result = await queryService(Category, query, {
+            searchFields: ["name", "description"],
+            populate: [{ path: "parentCategory", select: "name slug" }],
+        });
+
+        return res.json({ message: "Categories fetched successfully.", mode: "flat", ...result });
+    }
+
     const categories = await Category.find()
         // .populate("parentCategory")
         // .populate("parentCategory", "name slug image")
@@ -43,7 +70,7 @@ const getCategories = async (req, res) => {
 
     const categoryTree = buildCategoryTree(categories);
 
-    return res.json({ message: "Categories fetched successfully.", data: categoryTree });
+    return res.json({ message: "Categories fetched successfully.", mode: "tree", data: categoryTree });
 };
 
 const getCategoryById = async (req, res) => {
