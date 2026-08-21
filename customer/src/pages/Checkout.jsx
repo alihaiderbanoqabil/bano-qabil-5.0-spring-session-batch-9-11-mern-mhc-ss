@@ -10,12 +10,14 @@ import { clearCart, selectCartItems, selectCartTotal } from "../store/slices/car
 import { formatCurrency } from "../utils/format";
 import { useGetMeQuery } from "../store/api/authApi";
 import { useCreateOrderMutation } from "../store/api/orderApi";
+import { useCreatePaymentSessionForOrder } from "../hooks/useStripeCheckout";
+import { useGetPaymentConfigQuery } from "../store/api/paymentApi";
 import { getApiError } from "../store/api/baseApi";
 
 const PAYMENT_METHODS = [
   { value: "cod", label: "Cash on delivery", icon: Banknote, hint: "Pay when it arrives" },
-  { value: "card", label: "Card", icon: CreditCard, hint: "Stripe coming soon" },
-  { value: "paypal", label: "PayPal", icon: Wallet, hint: "Stripe coming soon" },
+  { value: "card", label: "Card", icon: CreditCard, hint: "Secure Stripe checkout" },
+  { value: "paypal", label: "PayPal", icon: Wallet, hint: "Not enabled yet" },
 ];
 
 export default function Checkout() {
@@ -25,6 +27,10 @@ export default function Checkout() {
   const total = useSelector(selectCartTotal);
   const { data: user } = useGetMeQuery();
   const [createOrder, { isLoading }] = useCreateOrderMutation();
+  // Server batata hai ke Stripe ki keys lagi hain ya nahi
+  const { data: paymentConfig } = useGetPaymentConfigQuery();
+  const { startPayment, isRedirecting } = useCreatePaymentSessionForOrder();
+  const cardEnabled = paymentConfig?.cardPaymentsEnabled;
 
   const {
     register,
@@ -75,6 +81,22 @@ export default function Checkout() {
 
       const result = await createOrder(payload).unwrap();
       dispatch(clearCart());
+
+      // Card wali order ke liye Stripe ke hosted page par bhej dete hain.
+      // Order pehle se ban chuki hoti hai (paymentStatus: pending) — payment
+      // ka faisla webhook karta hai, is liye user beech mein chhor de to bhi
+      // order uski history mein "unpaid" ki tarah mojood rehti hai.
+      if (values.paymentMethod === "card" && cardEnabled) {
+        toast.success("Order created — redirecting to secure payment");
+        const redirected = await startPayment(result.order._id);
+        if (redirected) return;
+
+        // Session na ban sake to user ko order page par bhej dete hain,
+        // jahan se wo dobara "Pay now" kar sakta hai
+        navigate(`/orders/${result.order._id}`, { replace: true });
+        return;
+      }
+
       toast.success("Order placed successfully!");
       navigate(`/orders/${result.order._id}`, { replace: true });
     } catch (error) {
@@ -134,28 +156,36 @@ export default function Checkout() {
             <h2 className="text-sm font-semibold text-slate-800">Payment method</h2>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              {PAYMENT_METHODS.map(({ value, label, icon: Icon, hint }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setValue("paymentMethod", value)}
-                  className={`flex flex-col items-start gap-1 rounded-xl border p-4 text-left transition ${
-                    paymentMethod === value
-                      ? "border-brand-600 bg-brand-50 ring-2 ring-brand-100"
-                      : "border-slate-300 bg-white hover:border-slate-400"
-                  }`}
-                >
-                  <Icon className={`h-5 w-5 ${paymentMethod === value ? "text-brand-600" : "text-slate-400"}`} />
-                  <span className="text-sm font-semibold text-slate-800">{label}</span>
-                  <span className="text-xs text-slate-500">{hint}</span>
-                </button>
-              ))}
+              {PAYMENT_METHODS.map(({ value, label, icon: Icon, hint }) => {
+                // paypal wired nahi hai; card sirf tab jab server par Stripe ki keys hon
+                const disabled = value === "paypal" || (value === "card" && !cardEnabled);
+
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setValue("paymentMethod", value)}
+                    className={`flex flex-col items-start gap-1 rounded-xl border p-4 text-left transition ${
+                      paymentMethod === value
+                        ? "border-brand-600 bg-brand-50 ring-2 ring-brand-100"
+                        : "border-slate-300 bg-white hover:border-slate-400"
+                    } ${disabled ? "cursor-not-allowed opacity-50 hover:border-slate-300" : ""}`}
+                  >
+                    <Icon className={`h-5 w-5 ${paymentMethod === value ? "text-brand-600" : "text-slate-400"}`} />
+                    <span className="text-sm font-semibold text-slate-800">{label}</span>
+                    <span className="text-xs text-slate-500">
+                      {value === "card" && !cardEnabled ? "Not configured on this server" : hint}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
-            {paymentMethod !== "cod" ? (
-              <p className="mt-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-700">
-                Online payment is not wired up yet — this order will be created with payment status
-                <span className="font-semibold"> pending</span>.
+            {paymentMethod === "card" ? (
+              <p className="mt-4 rounded-lg bg-brand-50 p-3 text-xs text-brand-700">
+                You will be redirected to Stripe to pay. Card details never touch this site, and the
+                order is only marked paid once Stripe confirms it.
               </p>
             ) : null}
           </section>
@@ -184,10 +214,16 @@ export default function Checkout() {
 
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || isRedirecting}
             className="mt-5 w-full rounded-lg bg-brand-600 py-3 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
-            {isLoading ? "Placing order..." : "Place order"}
+            {isRedirecting
+              ? "Redirecting to Stripe..."
+              : isLoading
+                ? "Placing order..."
+                : paymentMethod === "card" && cardEnabled
+                  ? "Pay with card"
+                  : "Place order"}
           </button>
 
           <p className="mt-3 text-center text-xs text-slate-400">

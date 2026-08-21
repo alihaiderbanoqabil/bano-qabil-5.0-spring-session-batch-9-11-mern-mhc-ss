@@ -1,9 +1,11 @@
-import { Link, useParams } from "react-router-dom";
-import { ChevronLeft, MapPin, CreditCard, XCircle, ImageOff } from "lucide-react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { ChevronLeft, MapPin, CreditCard, XCircle, ImageOff, CheckCircle2, AlertCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import Spinner from "../components/Spinner";
 import ErrorState from "../components/ErrorState";
 import { useCancelOrderMutation, useGetOrderByIdQuery } from "../store/api/orderApi";
+import { useGetPaymentConfigQuery } from "../store/api/paymentApi";
+import { useCreatePaymentSessionForOrder } from "../hooks/useStripeCheckout";
 import { getApiError } from "../store/api/baseApi";
 import {
   formatCurrency,
@@ -16,8 +18,14 @@ const STEPS = ["pending", "processing", "shipped", "delivered"];
 
 export default function OrderDetail() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const { data: order, isLoading, error, refetch } = useGetOrderByIdQuery(id);
   const [cancelOrder, { isLoading: isCancelling }] = useCancelOrderMutation();
+  const { data: paymentConfig } = useGetPaymentConfigQuery();
+  const { startPayment, isRedirecting } = useCreatePaymentSessionForOrder();
+
+  // Stripe wapis bhejte waqt ye query param lagata hai (success_url / cancel_url)
+  const paymentResult = searchParams.get("payment");
 
   if (isLoading) return <Spinner label="Loading order..." />;
   if (error) return <ErrorState error={error} onRetry={refetch} />;
@@ -26,6 +34,10 @@ export default function OrderDetail() {
   // Shipped/delivered ke baad backend cancel allow nahi karta, is liye button bhi chhupa dete hain
   const canCancel = !["shipped", "delivered", "cancelled"].includes(order.status);
   const currentStep = STEPS.indexOf(order.status);
+  const canPayNow =
+    paymentConfig?.cardPaymentsEnabled &&
+    order.paymentStatus !== "paid" &&
+    order.status !== "cancelled";
 
   const handleCancel = async () => {
     if (!window.confirm("Cancel this order? The items will go back into stock.")) return;
@@ -72,6 +84,40 @@ export default function OrderDetail() {
           </span>
         </div>
       </div>
+
+      {/* Stripe se wapis aane par. "success" ka matlab Stripe ka page theek se
+          poora hua — paisay confirm hone ka faisla webhook karta hai, is liye
+          jab tak paymentStatus paid na ho, hum "confirming" dikhate hain. */}
+      {paymentResult === "success" ? (
+        <div
+          className={`mb-6 flex items-start gap-2 rounded-xl p-4 text-sm ${
+            order.paymentStatus === "paid"
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-amber-50 text-amber-700"
+          }`}
+        >
+          {order.paymentStatus === "paid" ? (
+            <>
+              <CheckCircle2 size={18} className="mt-0.5 shrink-0" />
+              <span>Payment received — thank you! Your order is being prepared.</span>
+            </>
+          ) : (
+            <>
+              <AlertCircle size={18} className="mt-0.5 shrink-0" />
+              <span>
+                Confirming your payment with Stripe... this page updates itself the moment it lands.
+              </span>
+            </>
+          )}
+        </div>
+      ) : paymentResult === "cancelled" ? (
+        <div className="mb-6 flex items-start gap-2 rounded-xl bg-slate-100 p-4 text-sm text-slate-600">
+          <XCircle size={18} className="mt-0.5 shrink-0" />
+          <span>
+            Payment was cancelled. The order is still here — you can pay for it whenever you are ready.
+          </span>
+        </div>
+      ) : null}
 
       {order.status === "cancelled" ? (
         <div className="mb-6 flex items-center gap-2 rounded-xl bg-rose-50 p-4 text-sm text-rose-700">
@@ -178,6 +224,18 @@ export default function OrderDetail() {
               {order.paymentMethod} · {order.paymentStatus}
             </p>
           </div>
+
+          {canPayNow ? (
+            <button
+              type="button"
+              onClick={() => startPayment(order._id)}
+              disabled={isRedirecting}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:bg-slate-300"
+            >
+              <CreditCard size={16} />
+              {isRedirecting ? "Redirecting to Stripe..." : "Pay now with card"}
+            </button>
+          ) : null}
 
           {canCancel ? (
             <button

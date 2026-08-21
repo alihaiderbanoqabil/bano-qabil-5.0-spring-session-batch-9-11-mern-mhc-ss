@@ -4,7 +4,7 @@ This folder holds the complete, importable Postman documentation for the backend
 
 | File | Purpose |
 | --- | --- |
-| `bano-qabil-backend-api.postman_collection.json` | **Import this one.** The collection — 39 requests across 8 folders, with full markdown docs, example responses and test scripts. Named *Bano Qabil Backend API*. |
+| `bano-qabil-backend-api.postman_collection.json` | **Import this one.** The collection — 42 requests across 9 folders, with full markdown docs, example responses and test scripts. Named *Bano Qabil Backend API*. |
 | `bano-qabil-backend.postman_collection.json` | Identical, but named *bano-qabil-backend*. Only use it if no collection by that name already exists in your workspace. |
 | `bano-qabil-local.postman_environment.json` | Environment holding `base_url`, `token` and the id variables the scripts populate |
 
@@ -155,3 +155,6 @@ These are documented in detail on the individual requests, but they trip people 
 - **Customers can only cancel**, not set any other order status, and not after the order has shipped.
 - **`POST /api/auth/forgot-password` always answers the same** whether the email exists or not (no user enumeration). With no SMTP configured the reset link is printed to the backend console.
 - **Password reset links are one-time** — the token is stored on the user and cleared on use.
+- **Card payments need Stripe keys.** With `STRIPE_SECRET_KEY` unset, `/api/payments/config` reports `cardPaymentsEnabled: false`, the other payment routes answer `503`, and the storefront disables its Card option. Everything else (COD orders, browsing) works regardless.
+- **Only the Stripe webhook marks an order paid** — not the `success_url`, which a customer could open by hand.
+- **Socket.IO shares the port and the auth cookie.** `product:new` goes to everyone, `order:status` only to the order's owner, `order:new` only to admins.

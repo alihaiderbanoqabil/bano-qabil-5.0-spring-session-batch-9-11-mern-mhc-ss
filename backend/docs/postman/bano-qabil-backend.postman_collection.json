@@ -2153,6 +2153,110 @@
       ]
     },
     {
+      "id": "dbe79ea6-ba40-4396-98d5-a3197653e041",
+      "name": "Payments (Stripe)",
+      "description": {
+        "content": "Card payments through **Stripe Checkout** (Stripe's hosted page).\n\n| Method | Path | Access |\n| --- | --- | --- |\n| `GET` | `/api/payments/config` | 🌍 public |\n| `POST` | `/api/payments/checkout-session` | 🔒 authenticated |\n| `POST` | `/api/payments/webhook` | Stripe only (signature verified) |\n\n### How the flow hangs together\n\n1. Customer checks out with `paymentMethod: \"card\"` → the order is created normally, `paymentStatus: \"pending\"`.\n2. Frontend calls **Create Checkout Session** and redirects the browser to the returned `url`.\n3. Customer pays on Stripe's page. Card details never touch this server.\n4. Stripe redirects back to `${FRONTEND_URL}/orders/:id?payment=success` (or `?payment=cancelled`).\n5. Stripe calls the **webhook**, and *that* is what marks the order paid — never the success URL, which a customer could open by hand.\n\n### Local testing\n\n```bash\nstripe login\nstripe listen --forward-to localhost:5000/api/payments/webhook\n# copy the printed whsec_... into STRIPE_WEBHOOK_SECRET, restart the backend\nstripe trigger checkout.session.completed\n```\n\nWithout `STRIPE_SECRET_KEY` the whole feature stays switched off: `config` reports `cardPaymentsEnabled: false`, the other two routes answer `503`, and the storefront disables its Card option.",
+        "type": "text/plain"
+      },
+      "event": [],
+      "item": [
+        {
+          "id": "528f967e-2036-4df9-b0ff-8a2581015969",
+          "name": "Payment Config",
+          "request": {
+            "description": {
+              "content": "Tells the frontend whether card payments can be offered.\n\n`🌍 Public`\n\n```json\n{ \"cardPaymentsEnabled\": true, \"currency\": \"pkr\" }\n```\n\n`cardPaymentsEnabled` is simply \"is `STRIPE_SECRET_KEY` set on the server\". The storefront greys out its Card option when this is `false`, instead of letting a customer pick a method that cannot work.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "payments",
+                "config"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": []
+        },
+        {
+          "id": "7771fa3e-212c-44a6-aff8-69933bf580df",
+          "name": "Create Checkout Session",
+          "request": {
+            "description": {
+              "content": "Creates a Stripe Checkout session for an existing order and returns its URL.\n\n`🔒 Authenticated` — the order's owner, or an admin.\n\n### Body\n| Field | Type | Required |\n| --- | --- | --- |\n| `orderId` | ObjectId | ✅ |\n\n### Response — 200 OK\n```json\n{\n  \"message\": \"Checkout session created\",\n  \"url\": \"https://checkout.stripe.com/c/pay/cs_test_...\",\n  \"sessionId\": \"cs_test_...\"\n}\n```\n\nRedirect the browser to `url` (a full page navigation, not a client-side route).\n\n| Status | Cause |\n| --- | --- |\n| `400` | `orderId is required`, `This order is already paid`, `This order was cancelled` |\n| `401` | Not logged in |\n| `403` | Someone else's order |\n| `404` | No such order |\n| `502` | Stripe rejected the request — the real reason is in the server log, the client gets a generic message on purpose (Stripe's own errors mention the API key) |\n| `503` | `STRIPE_SECRET_KEY` is not set |\n\nLine items are built from the **stored order**, whose prices came from the product catalogue — the client cannot influence the amount charged.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "payments",
+                "checkout-session"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"{{order_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": []
+        },
+        {
+          "id": "45a33587-c2e1-426e-b242-c6064ea1ddef",
+          "name": "Stripe Webhook (reference only)",
+          "request": {
+            "description": {
+              "content": "**Do not send this from Postman** — it will fail signature verification. It is documented here so the contract is visible; use the Stripe CLI to exercise it.\n\n`Stripe only` · mounted **before** `express.json()` with `express.raw()`, and outside the rate limiter.\n\n### Why raw body\nStripe signs the exact bytes it sent. `express.json()` would parse them into an object and `xss()` would sanitize them — either one breaks the signature. So this one route is registered ahead of both, in `server.js`.\n\n### Events handled\n| Event | Effect |\n| --- | --- |\n| `checkout.session.completed` | `paymentStatus → paid`; a `pending` order also moves to `processing`; emits `order:payment` (customer + admins) and `order:status` (customer) |\n| `checkout.session.expired` | `paymentStatus → failed` (only if still `pending`) |\n| `payment_intent.payment_failed` | same as above |\n\nThe order id comes from `metadata.orderId` (falling back to `client_reference_id`), both set when the session was created.\n\n### Responses\n| Status | Cause |\n| --- | --- |\n| `200` | `{ \"received\": true }` — including for events we ignore, and for an order that no longer exists (otherwise Stripe retries forever) |\n| `400` | Signature verification failed |\n| `503` | `STRIPE_SECRET_KEY` or `STRIPE_WEBHOOK_SECRET` missing |\n\nReplays are safe: an order already marked `paid` is left alone.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "payments",
+                "webhook"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "<< Stripe sends the raw event body and a stripe-signature header >>",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": []
+        }
+      ]
+    },
+    {
       "id": "1f8567e5-64c1-4989-9daf-31e2e2450ea1",
       "name": "Static Files",
       "description": {
@@ -2240,7 +2344,7 @@
     "name": "bano-qabil-backend",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "description": {
-      "content": "# Bano Qabil 5.0 — E-Commerce Backend API\n\nREST API for the MERN e-commerce project (Express 5 + Mongoose + JWT).\n\n---\n\n## Base URL\n\nAll requests use the `{{base_url}}` environment variable.\n\n| Environment | Value |\n| --- | --- |\n| Local | `http://localhost:5000` |\n\nThe port comes from `PORT` in `backend/.env` (defaults to `3000` if unset).\n\n## Authentication\n\nThe API uses a **JWT in an httpOnly cookie**.\n\n1. Call **Auth → Login**. The response body contains **no token** — the JWT arrives as `Set-Cookie: token=<jwt>; HttpOnly`. Postman keeps it in its cookie jar and replays it on every later request.\n2. Call **Auth → Logout** to clear it.\n\n`authenticate` reads the token from the `token` cookie first, and falls back to an `Authorization: Bearer <jwt>` header — so mobile apps, server-to-server calls and the collection-level bearer auth all keep working.\n\nToken payload: `{ id, email, role }` · Expiry: **7 days** · Signed with `JWT_SECRET`.\n\nWhy a cookie: `httpOnly` means page JavaScript cannot read the token, so an XSS bug cannot walk off with the session the way it can with `localStorage`. The trade-off is CSRF exposure — mitigated here by `SameSite=Lax` (`None` + `secure` in production) and a CORS allow-list of exact origins.\n\n## Query engine on list routes\n\n`GET /api/products`, `/api/orders`, `/api/comments`, `/api/users` and `/api/categories?flat=true` all run through one shared helper, so they take the same parameters:\n\n| Param | Example | Effect |\n| --- | --- | --- |\n| `page` / `limit` | `?page=2&limit=20` | Pagination — default `10`, max `100` |\n| `sort` | `?sort=-createdAt,name` | Multi-field sort, `-` = descending |\n| `fields` | `?fields=name,price` | Include, or `?fields=-description` to exclude |\n| `search` | `?search=laptop` | Case-insensitive regex over that route's search fields |\n| `<field>` | `?role=admin` | Equality filter |\n| `<field>[gte\\|gt\\|lte\\|lt\\|ne]` | `?price[gte]=100` | Comparison |\n| `<field>[in\\|nin]` | `?status[in]=pending,paid` | Comma-separated list |\n\nEvery one of them answers with the same envelope:\n\n```json\n{ \"message\": \"...\", \"data\": [ ... ], \"pagination\": { \"total\": 42, \"page\": 1, \"limit\": 10, \"totalPages\": 5, \"hasNextPage\": true, \"hasPrevPage\": false } }\n```\n\n## Roles\n\n| Role | Capabilities |\n| --- | --- |\n| `customer` | Own profile, own orders, read products & categories |\n| `admin` | Everything, plus user management and product/category writes |\n\n## Standard error responses\n\n| Status | Meaning |\n| --- | --- |\n| `400` | Validation failure / duplicate record |\n| `401` | Missing, malformed or expired token |\n| `403` | Authenticated but role or ownership check failed |\n| `404` | Resource not found |\n| `429` | Rate limit exceeded |\n| `500` | Unhandled server error |\n\nError body is always: `{ \"message\": \"...\" }`\n\n## Rate limiting\n\n**100 requests per 15 minutes per IP**, applied globally. Responses include the standard `RateLimit-*` headers. Exceeding it returns `429` with the plain-text body `Too many requests from this IP, please try again later.`\n\n## File uploads\n\nImage uploads use `multipart/form-data` through Multer.\n\n- Images only (`image/*` mimetype), max **5 MB** per file\n- Saved to `backend/uploads/`, stored in Mongo as a relative path such as `/uploads/68f3...c1.png`\n- Served publicly at `{{base_url}}/uploads/<filename>`\n\n## Comments & ratings\n\n`Comment` links a **product** and a **user**, and refers to itself through `parentComment` for one-level-deep replies. Every create / update / delete recalculates the product's `averageRating` and `numReviews`, so product listings can sort and filter on rating without touching the comments collection.\n\nSee the **Comments** folder for the full contract.\n\n## Quick start\n\n1. Select the **bano-qabil-local** environment (top-right of Postman).\n2. Start the server: `npm run dev` inside `backend/`.\n3. Run **Auth → Register (Admin)**, then **Auth → Login** — the token is captured automatically.\n4. Everything else is ready to send.\n\n## Error contract\n\nEvery error response — including 404s for unknown routes — is produced by one central handler and always has this shape:\n\n```json\n{ \"message\": \"...\" }\n```\n\n| Cause | Status |\n| --- | --- |\n| Malformed ObjectId (`CastError`) | `400` — `Invalid _id: <value>` |\n| Schema validation failure | `400` — all failing fields, comma-separated |\n| Duplicate unique field | `400` — `<field> already exists` |\n| Malformed JSON body | `400` — `Invalid JSON body` |\n| Missing/invalid/expired JWT | `401` |\n| Role or ownership check | `403` |\n| Unknown route | `404` — `Route not found - <METHOD> <path>` |\n| Unhandled bug | `500` — generic message in production |",
+      "content": "# Bano Qabil 5.0 — E-Commerce Backend API\n\nREST API for the MERN e-commerce project (Express 5 + Mongoose + JWT).\n\n---\n\n## Base URL\n\nAll requests use the `{{base_url}}` environment variable.\n\n| Environment | Value |\n| --- | --- |\n| Local | `http://localhost:5000` |\n\nThe port comes from `PORT` in `backend/.env` (defaults to `3000` if unset).\n\n## Authentication\n\nThe API uses a **JWT in an httpOnly cookie**.\n\n1. Call **Auth → Login**. The response body contains **no token** — the JWT arrives as `Set-Cookie: token=<jwt>; HttpOnly`. Postman keeps it in its cookie jar and replays it on every later request.\n2. Call **Auth → Logout** to clear it.\n\n`authenticate` reads the token from the `token` cookie first, and falls back to an `Authorization: Bearer <jwt>` header — so mobile apps, server-to-server calls and the collection-level bearer auth all keep working.\n\nToken payload: `{ id, email, role }` · Expiry: **7 days** · Signed with `JWT_SECRET`.\n\nWhy a cookie: `httpOnly` means page JavaScript cannot read the token, so an XSS bug cannot walk off with the session the way it can with `localStorage`. The trade-off is CSRF exposure — mitigated here by `SameSite=Lax` (`None` + `secure` in production) and a CORS allow-list of exact origins.\n\n## Query engine on list routes\n\n`GET /api/products`, `/api/orders`, `/api/comments`, `/api/users` and `/api/categories?flat=true` all run through one shared helper, so they take the same parameters:\n\n| Param | Example | Effect |\n| --- | --- | --- |\n| `page` / `limit` | `?page=2&limit=20` | Pagination — default `10`, max `100` |\n| `sort` | `?sort=-createdAt,name` | Multi-field sort, `-` = descending |\n| `fields` | `?fields=name,price` | Include, or `?fields=-description` to exclude |\n| `search` | `?search=laptop` | Case-insensitive regex over that route's search fields |\n| `<field>` | `?role=admin` | Equality filter |\n| `<field>[gte\\|gt\\|lte\\|lt\\|ne]` | `?price[gte]=100` | Comparison |\n| `<field>[in\\|nin]` | `?status[in]=pending,paid` | Comma-separated list |\n\nEvery one of them answers with the same envelope:\n\n```json\n{ \"message\": \"...\", \"data\": [ ... ], \"pagination\": { \"total\": 42, \"page\": 1, \"limit\": 10, \"totalPages\": 5, \"hasNextPage\": true, \"hasPrevPage\": false } }\n```\n\n## Roles\n\n| Role | Capabilities |\n| --- | --- |\n| `customer` | Own profile, own orders, read products & categories |\n| `admin` | Everything, plus user management and product/category writes |\n\n## Standard error responses\n\n| Status | Meaning |\n| --- | --- |\n| `400` | Validation failure / duplicate record |\n| `401` | Missing, malformed or expired token |\n| `403` | Authenticated but role or ownership check failed |\n| `404` | Resource not found |\n| `429` | Rate limit exceeded |\n| `500` | Unhandled server error |\n\nError body is always: `{ \"message\": \"...\" }`\n\n## Rate limiting\n\n**100 requests per 15 minutes per IP**, applied globally. Responses include the standard `RateLimit-*` headers. Exceeding it returns `429` with the plain-text body `Too many requests from this IP, please try again later.`\n\n## File uploads\n\nImage uploads use `multipart/form-data` through Multer.\n\n- Images only (`image/*` mimetype), max **5 MB** per file\n- Saved to `backend/uploads/`, stored in Mongo as a relative path such as `/uploads/68f3...c1.png`\n- Served publicly at `{{base_url}}/uploads/<filename>`\n\n## Comments & ratings\n\n`Comment` links a **product** and a **user**, and refers to itself through `parentComment` for one-level-deep replies. Every create / update / delete recalculates the product's `averageRating` and `numReviews`, so product listings can sort and filter on rating without touching the comments collection.\n\nSee the **Comments** folder for the full contract.\n\n## Realtime events (Socket.IO)\n\nThe API also runs a Socket.IO server on the **same port**. Clients connect with credentials (`withCredentials: true`) and the server reads the same auth cookie from the handshake, then puts the socket into rooms:\n\n| Room | Who | Events |\n| --- | --- | --- |\n| `everyone` | every client, guests included | `product:new` |\n| `user:<id>` | one customer | `order:status`, `order:payment` |\n| `admins` | all logged-in admins | `order:new`, `order:payment` |\n\nEmitted from `product.controller` (create), `order.controller` (create, status change) and `payment.controller` (webhook). A status change only fires when the status actually changed — editing an address does not notify the customer.\n\n## Quick start\n\n1. Select the **bano-qabil-local** environment (top-right of Postman).\n2. Start the server: `npm run dev` inside `backend/`.\n3. Run **Auth → Register (Admin)**, then **Auth → Login** — the token is captured automatically.\n4. Everything else is ready to send.\n\n## Error contract\n\nEvery error response — including 404s for unknown routes — is produced by one central handler and always has this shape:\n\n```json\n{ \"message\": \"...\" }\n```\n\n| Cause | Status |\n| --- | --- |\n| Malformed ObjectId (`CastError`) | `400` — `Invalid _id: <value>` |\n| Schema validation failure | `400` — all failing fields, comma-separated |\n| Duplicate unique field | `400` — `<field> already exists` |\n| Malformed JSON body | `400` — `Invalid JSON body` |\n| Missing/invalid/expired JWT | `401` |\n| Role or ownership check | `403` |\n| Unknown route | `404` — `Route not found - <METHOD> <path>` |\n| Unhandled bug | `500` — generic message in production |",
       "type": "text/plain"
     }
   }

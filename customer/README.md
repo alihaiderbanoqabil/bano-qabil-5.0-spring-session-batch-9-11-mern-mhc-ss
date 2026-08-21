@@ -49,6 +49,38 @@ cd ../backend && npm run seed
 - **Auth** — register → email verification → login, forgot/reset password,
   profile edit + password change
 
+## Realtime (Socket.IO)
+
+`src/socket.js` ek hi socket banata hai; `src/components/RealtimeListener.jsx`
+App mein mount hai aur events ko teen cheezon mein badalta hai: toast, bell ki
+list (`notificationSlice`), aur RTK Query cache invalidation — yani UI khud
+refresh ho jata hai, refetch button dabane ki zarorat nahi.
+
+| Event | Kisko | Kya hota hai |
+| --- | --- | --- |
+| `product:new` | sab ko (guest bhi) | clickable toast + bell, product list stale |
+| `order:status` | sirf us order ke malik ko | toast + bell, us order ka cache stale |
+| `order:payment` | order ke malik ko | payment paid/failed ka toast, order stale |
+
+URL nahi diya jata — socket usi origin se judta hai aur vite `/socket.io` ko
+backend par proxy karta hai (`ws: true`), is liye auth cookie khud chali jati hai.
+
+## Payments (Stripe)
+
+Card wali order par flow: order pehle banti hai (`paymentStatus: pending`) →
+`POST /api/payments/checkout-session` → browser Stripe ke hosted page par jata
+hai → wapis `?payment=success|cancelled` ke sath. **Paid** hone ka faisla
+webhook karta hai, success URL nahi (usay customer khud bhi khol sakta hai) —
+is liye jab tak webhook na aaye, page "confirming your payment" dikhata hai,
+aur webhook aane par socket se khud paid ho jata hai.
+
+Order detail par "Pay now with card" button unpaid order ke liye hamesha
+mojood rehta hai, to beech mein chhora hua payment baad mein pura kiya ja
+sakta hai.
+
+Stripe ki keys server par na hon to checkout par Card option khud disabled ho
+jata hai (`/api/payments/config` se).
+
 ## Notes
 
 - Register jaan boojh kar `role: "customer"` bhejta hai, is liye account

@@ -12,6 +12,7 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import { useGetMeQuery, useLogoutMutation } from "../store/api/authApi";
+import NotificationBell from "../components/NotificationBell";
 
 const { Header, Sider, Content } = Layout;
 
@@ -69,7 +70,10 @@ export default function AdminLayout() {
         >
           <Typography.Text type="secondary">Store administration</Typography.Text>
 
-          <Dropdown
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <NotificationBell />
+
+            <Dropdown
             menu={{
               items: [
                 { key: "email", label: user?.email, disabled: true },
@@ -84,11 +88,12 @@ export default function AdminLayout() {
               ],
             }}
           >
-            <Button type="text" style={{ height: 44 }}>
-              <Avatar size="small" icon={<UserOutlined />} style={{ marginRight: 8 }} />
-              {user?.name || "Admin"}
-            </Button>
-          </Dropdown>
+              <Button type="text" style={{ height: 44 }}>
+                <Avatar size="small" icon={<UserOutlined />} style={{ marginRight: 8 }} />
+                {user?.name || "Admin"}
+              </Button>
+            </Dropdown>
+          </div>
         </Header>
 
         <Content style={{ margin: 24 }}>

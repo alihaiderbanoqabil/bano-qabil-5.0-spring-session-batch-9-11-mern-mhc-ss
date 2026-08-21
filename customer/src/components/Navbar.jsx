@@ -5,6 +5,7 @@ import { useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import { useGetMeQuery, useLogoutMutation } from "../store/api/authApi";
 import { selectCartCount } from "../store/slices/cartSlice";
+import NotificationBell from "./NotificationBell";
 
 const navLinkClass = ({ isActive }) =>
   `text-sm font-medium transition ${isActive ? "text-brand-600" : "text-slate-600 hover:text-slate-900"}`;
@@ -69,6 +70,8 @@ export default function Navbar() {
         </form>
 
         <div className="ml-auto flex items-center gap-1 lg:ml-4">
+          <NotificationBell />
+
           <Link
             to="/cart"
             className="relative flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100"

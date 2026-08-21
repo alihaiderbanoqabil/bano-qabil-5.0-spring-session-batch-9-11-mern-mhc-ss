@@ -2,6 +2,7 @@ const Order = require("../models/order.model");
 const Product = require("../models/product.model");
 const AppError = require("../utils/AppError");
 const { queryService } = require("../utils/queryService");
+const { notifyOrderStatus, notifyNewOrder } = require("../socket");
 
 const getOrders = async (req, res) => {
     // const filter = req.user.role === "admin" ? {} : { user: req.user.id };
@@ -90,6 +91,9 @@ const createOrder = async (req, res) => {
         )
     );
 
+    // Admin dashboard ko realtime nayi order dikha dete hain
+    notifyNewOrder(order);
+
     return res.status(201).json({ message: "Order created successfully", order });
 };
 
@@ -126,9 +130,16 @@ const updateOrder = async (req, res) => {
     delete payload.user;
 
     const wasCancelled = order.status === "cancelled";
+    const previousStatus = order.status;
 
     Object.assign(order, payload);
     await order.save();
+
+    // Status waqai badla ho tab hi notification — warna address edit karne par
+    // bhi customer ko "order updated" ping chala jata
+    if (order.status !== previousStatus) {
+        notifyOrderStatus({ order, previousStatus });
+    }
 
     // Cancel hone par stock wapis shelf par — warna cancelled orders inventory
     // hamesha ke liye kha jati hain.

@@ -12,6 +12,9 @@ export default defineConfig({
     proxy: {
       '/api': { target: 'http://localhost:5000', changeOrigin: true },
       '/uploads': { target: 'http://localhost:5000', changeOrigin: true },
+      // ws: true ke bagair socket.io ka upgrade request proxy se nahi guzarta
+      // aur client hamesha polling par atka rehta hai
+      '/socket.io': { target: 'http://localhost:5000', ws: true },
     },
   },
 })

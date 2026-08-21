@@ -2,6 +2,7 @@ const Product = require("../models/product.model");
 const Comment = require("../models/comment.model");
 const AppError = require("../utils/AppError");
 const { queryService } = require("../utils/queryService");
+const { notifyNewProduct } = require("../socket");
 
 const getProducts = async (req, res) => {
     // console.log(req.query, "req.query");
@@ -59,6 +60,12 @@ const createProduct = async (req, res) => {
     }
 
     const product = await Product.create(payload);
+
+    // Har juday hue client ko realtime batao — customer app toast + bell mein
+    // dikhata hai. Sirf active products ka announcement, warna draft/hidden
+    // product ki notification chali jati jo list mein hi nahi aata.
+    if (product.isActive) notifyNewProduct(product);
+
     return res.status(201).json({ message: "Product created successfully", product });
 };
 

@@ -43,6 +43,16 @@ httpOnly cookie se chalti hai.
 - **Users** — role change, delete (apna account nahi)
 - **Comments** — hide/restore moderation aur delete
 
+## Realtime (Socket.IO)
+
+Header mein notification bell hai. `src/components/RealtimeListener.jsx`
+`order:new` aur `order:payment` sunta hai, antd notification dikhata hai, aur
+`Stats` + `Order` tags invalidate karta hai — is liye **dashboard ke numbers
+aur orders table bina reload khud update ho jate hain**.
+
+Server handshake par cookie dekh kar admin ko `admins` room mein daalta hai,
+to sirf admins ko ye events milte hain.
+
 ## Note
 
 Ye portal sirf admin ke liye hai. Customer role se login karne par app foran

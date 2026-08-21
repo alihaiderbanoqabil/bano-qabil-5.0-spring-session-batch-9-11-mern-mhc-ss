@@ -1,6 +1,7 @@
 require("dotenv").config();
 
 const express = require("express");
+const http = require("http");
 // https://www.npmjs.com/package/cors
 const cors = require('cors'); 
 // https://www.npmjs.com/package/helmet
@@ -25,6 +26,9 @@ const categoryRoutes = require("./routes/category.routes");
 const orderRoutes = require("./routes/order.routes");
 const commentRoutes = require("./routes/comment.routes");
 const statsRoutes = require("./routes/stats.routes");
+const paymentRoutes = require("./routes/payment.routes");
+const { handleWebhook } = require("./controllers/payment.controller");
+const { initSocket } = require("./socket");
 
 // Express ke bahar hone wale stray promise rejections ke liye — sirf LOG karte
 // hain, process band nahi karte. Wajah: kuch third-party SDKs (jaise Cloudinary)
@@ -67,6 +71,14 @@ app.use(cors({
     credentials: true, // cookies/auth headers cross-origin bhejne ke liye zaroori
 }));
 
+// ── Stripe webhook — sab se pehle, JSON parser se PEHLE ──────────────────
+// Signature verify karne ke liye Stripe ko byte-for-byte wohi body chahiye jo
+// usne bheji thi. express.json() usay parse kar ke object bana deta, aur xss()
+// sanitize kar deta — dono se signature toot jata. Is liye ye route yahan hai,
+// apne raw parser ke sath. Rate limiter se bhi bahar rakha hai, warna busy
+// din mein Stripe ke retries 429 khane lagte.
+app.post("/api/payments/webhook", express.raw({ type: "application/json" }), handleWebhook);
+
 // Rate limiting — protects against brute force / abuse
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -93,6 +105,7 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/comments", commentRoutes);
 app.use("/api/stats", statsRoutes);
+app.use("/api/payments", paymentRoutes);
 app.use("/api/media", require("./routes/media.routes"));
 
 // Har route ke baad honi chahiye: upar jo bhi match na ho, wo yahan pakra jata hai.
@@ -103,7 +116,13 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
+// Socket.IO ko express ke saath ek hi HTTP server par chalate hain — is liye
+// app.listen() ki jagah apna http server banate hain aur usi ko dono dete hain.
+// Fayda: ek hi port, ek hi origin, aur wohi auth cookie socket par bhi.
+const httpServer = http.createServer(app);
+initSocket(httpServer);
+
+httpServer.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
 
