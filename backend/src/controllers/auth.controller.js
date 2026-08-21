@@ -3,7 +3,8 @@ const User = require("../models/user.model");
 const AppError = require("../utils/AppError");
 const {
     // createVerificationToken,
-    sendVerificationEmail } = require("../utils/email");
+    sendVerificationEmail,
+    sendPasswordResetEmail } = require("../utils/email");
 
 const TOKEN_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days — same as the JWT expiry
 
@@ -95,7 +96,7 @@ const register = async (req, res) => {
         user.emailVerificationToken = verificationToken;
         await user.save();
 
-        const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+        const baseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
         const verificationLink = `${baseUrl}/verify-email?token=${verificationToken}`;
 
         await sendVerificationEmail({
@@ -171,6 +172,90 @@ const logout = async (req, res) => {
     return res.json({ message: "Logout successfully" });
 };
 
+/**
+ * POST /api/auth/forgot-password  { email }
+ *
+ * Jawab hamesha same hota hai — chahe email exist kare ya na kare. Warna ye
+ * route "kaun sa email register hai" batane wala tool ban jata hai (user
+ * enumeration).
+ */
+const forgotPassword = async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+        throw new AppError("Email is required", 400);
+    }
+
+    const genericResponse = {
+        message: "If an account exists for that email, a password reset link has been sent.",
+    };
+
+    const user = await User.findOne({ email });
+    if (!user) {
+        return res.json(genericResponse);
+    }
+
+    // 1 ghanta — reset link ki umar login token se bohat kam honi chahiye
+    const resetToken = createToken(user, "1h");
+    user.passwordResetToken = resetToken;
+    await user.save();
+
+    const baseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const resetLink = `${baseUrl}/reset-password?token=${resetToken}`;
+
+    await sendPasswordResetEmail({ to: user.email, name: user.name, resetLink });
+
+    return res.json(genericResponse);
+};
+
+/**
+ * POST /api/auth/reset-password  { token, password }
+ *
+ * Do check hote hain: JWT valid ho, aur wohi token DB mein bhi mojood ho.
+ * Doosra check hi link ko one-time banata hai — reset ke baad hum DB se token
+ * hata dete hain, to same link dobara nahi chalta.
+ */
+const resetPassword = async (req, res) => {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+        throw new AppError("Token and new password are required", 400);
+    }
+
+    if (password.length < 6) {
+        throw new AppError("Password must be at least 6 characters", 400);
+    }
+
+    let decoded;
+    try {
+        decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (error) {
+        // verifyEmail ki tarah: purana link bad request hai, auth challenge nahi
+        throw new AppError(
+            error.name === "TokenExpiredError"
+                ? "Password reset link has expired"
+                : "Invalid password reset link",
+            400
+        );
+    }
+
+    const user = await User.findOne({ _id: decoded.id }).select("+passwordResetToken");
+
+    if (!user || user.passwordResetToken !== token) {
+        throw new AppError("Invalid or already used password reset link", 400);
+    }
+
+    user.password = password;      // pre-save hook hash kar deta hai
+    user.passwordResetToken = null; // link ab dobara nahi chalega
+    await user.save();
+
+    // Password badalne par purani session cookie bhi hata dete hain, taake
+    // user ko naye password se fresh login karna paray.
+    res.clearCookie("token", tokenCookieOptions());
+
+    return res.json({ message: "Password reset successfully. Please log in with your new password." });
+};
+
 const getMe = async (req, res) => {
     const user = await User.findById(req.user.id).select("-password");
     if (!user) {
@@ -221,4 +306,6 @@ module.exports = {
     logout,
     getMe,
     verifyEmail,
+    forgotPassword,
+    resetPassword,
 };

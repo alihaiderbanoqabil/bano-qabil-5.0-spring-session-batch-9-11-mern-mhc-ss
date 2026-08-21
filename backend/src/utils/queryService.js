@@ -194,8 +194,6 @@ const queryService = async (Model, query = {}, options = {}) => {
     let dbQuery = Model.find(filter).select(fields).sort(sort).skip(skip).limit(limit);
 
     for (const pop of populate) {
-        console.log(pop, "pop");
-
         dbQuery = dbQuery.populate(pop.path, pop.select ?? '');
     }
 

@@ -4,7 +4,7 @@ This folder holds the complete, importable Postman documentation for the backend
 
 | File | Purpose |
 | --- | --- |
-| `bano-qabil-backend-api.postman_collection.json` | **Import this one.** The collection — 36 requests across 7 folders, with full markdown docs, example responses and test scripts. Named *Bano Qabil Backend API*. |
+| `bano-qabil-backend-api.postman_collection.json` | **Import this one.** The collection — 39 requests across 8 folders, with full markdown docs, example responses and test scripts. Named *Bano Qabil Backend API*. |
 | `bano-qabil-backend.postman_collection.json` | Identical, but named *bano-qabil-backend*. Only use it if no collection by that name already exists in your workspace. |
 | `bano-qabil-local.postman_environment.json` | Environment holding `base_url`, `token` and the id variables the scripts populate |
 
@@ -151,5 +151,7 @@ These are documented in detail on the individual requests, but they trip people 
 - **One rating per user per product.** A second rated comment returns `400 You have already rated this product` — `PATCH` the first one instead. Text-only comments have no such limit.
 - **Product rating fields are derived.** `averageRating` / `numReviews` are written by the Comment model, never by the product routes — sending them in a product body has no lasting effect.
 - **Deletes cascade.** Deleting a comment removes its replies; deleting a product removes all of its comments.
-- **`GET /api/orders/:id` returns `403` for customers even on their own order** — a known bug in the ownership check (it compares the populated user document instead of its id). Admin tokens work fine.
-- **`DELETE /api/orders/:id` has no ownership or role check** — any logged-in user can delete any order.
+- **Order pricing is server-side.** `price`/`totalAmount` sent by the client are ignored — the server reads prices from the product catalogue, computes the total, and decrements stock. Cancelling an order restores it.
+- **Customers can only cancel**, not set any other order status, and not after the order has shipped.
+- **`POST /api/auth/forgot-password` always answers the same** whether the email exists or not (no user enumeration). With no SMTP configured the reset link is printed to the backend console.
+- **Password reset links are one-time** — the token is stored on the user and cleared on use.

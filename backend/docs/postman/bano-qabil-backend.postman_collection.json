@@ -489,6 +489,87 @@
           },
           "response": [],
           "event": []
+        },
+        {
+          "id": "78f648cc-863b-4cb4-885f-8a85b25e3471",
+          "name": "Forgot Password",
+          "request": {
+            "description": {
+              "content": "Emails a one-hour password reset link.\n\n`🌍 Public`\n\n### Body\n| Field | Type | Required |\n| --- | --- | --- |\n| `email` | string | ✅ |\n\n### Response — 200 OK (always the same)\n```json\n{ \"message\": \"If an account exists for that email, a password reset link has been sent.\" }\n```\n\nThe answer never changes, whether the email exists or not — otherwise this route becomes a tool for discovering which emails are registered (user enumeration).\n\n| Status | Cause |\n| --- | --- |\n| `400` | `Email is required` |\n\nThe link points at `${FRONTEND_URL}/reset-password?token=<jwt>` (`FRONTEND_URL` defaults to `http://localhost:5173`). With no SMTP configured, the backend logs the link to its console instead of sending it — that is how you test this locally.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "auth",
+                "forgot-password"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "cca7b556-a413-4698-adcd-a3a173da688f",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "56b76dd2-f53c-4532-9454-c257ee81ac46",
+          "name": "Reset Password",
+          "request": {
+            "description": {
+              "content": "Sets a new password using the token from the reset email.\n\n`🌍 Public`\n\n### Body\n| Field | Type | Required | Notes |\n| --- | --- | --- | --- |\n| `token` | string (JWT) | ✅ | From the email link's `?token=` |\n| `password` | string | ✅ | At least 6 characters |\n\n### Response — 200 OK\n```json\n{ \"message\": \"Password reset successfully. Please log in with your new password.\" }\n```\n\n| Status | Cause |\n| --- | --- |\n| `400` | `Token and new password are required` |\n| `400` | `Password must be at least 6 characters` |\n| `400` | `Password reset link has expired` (older than 1 hour) |\n| `400` | `Invalid password reset link` (bad signature) |\n| `400` | `Invalid or already used password reset link` |\n\n**One-time use.** The token is also stored on the user document and cleared on success, so the same link cannot be replayed even while its JWT is still valid. The current session cookie is cleared too, forcing a fresh login.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "auth",
+                "reset-password"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"<paste-token-from-email-link>\",\n  \"password\": \"NewPass@123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": []
         }
       ],
       "event": []
@@ -1446,7 +1527,7 @@
           "name": "Get Order By ID",
           "request": {
             "description": {
-              "content": "Fetches one order with `user` and `items.product` populated.\n\n`🔒 Authenticated` — admins can read any order; customers only their own.\n\n| Status | Cause |\n| --- | --- |\n| `200` | Order document |\n| `403` | `Forbidden` — ownership check failed |\n| `404` | `Order not found` |\n\n> **Known issue:** the ownership check compares the *populated* `user` document against the token id, so it never matches for a customer and returns `403` even on their own order. Admins are unaffected. Fix by populating after the check, or by comparing `order.user._id.toString()`.",
+              "content": "Fetches one order with `user` and `items.product` populated.\n\n`🔒 Authenticated` — admins can read any order; customers only their own.\n\n| Status | Cause |\n| --- | --- |\n| `200` | Order document |\n| `403` | `Forbidden` — ownership check failed |\n| `404` | `Order not found` |\n\n> **Known issue:** the ownership check compares the *populated* `user` document against the token id, so it never matches for a customer and returns `403` even on their own order. Admins are unaffected. Fix by populating after the check, or by comparing `order.user._id.toString()`.\n\n> The old bug where a customer got `403` on their **own** order is fixed — the ownership check compares `order.user._id`, not the populated document.",
               "type": "text/plain"
             },
             "url": {
@@ -1471,7 +1552,7 @@
           "name": "Create Order",
           "request": {
             "description": {
-              "content": "Places an order for the logged-in user.\n\n`🔒 Authenticated`\n\n### Body\n\n| Field | Type | Required | Notes |\n| --- | --- | --- | --- |\n| `items` | array | ✅ | At least one entry |\n| `items[].product` | ObjectId | ✅ | |\n| `items[].quantity` | number | ✅ | Min `1` |\n| `items[].price` | number | ✅ | Unit price captured at order time |\n| `totalAmount` | number | ✅ | `>= 0` |\n| `shippingAddress` | object | ❌ | `street`, `city`, `state`, `zip`, `country` |\n| `paymentMethod` | enum | ❌ | `card` \\| `cod` \\| `paypal` — default `cod` |\n| `paymentStatus` | enum | ❌ | Default `pending` |\n| `status` | enum | ❌ | Default `pending` |\n| `user` | ObjectId | ❌ | **Admins only** — place an order on someone's behalf. Ignored for customers, who are always bound to their own token id. |\n\n### Responses\n\n**201 Created**\n```json\n{\n  \"message\": \"Order created successfully\",\n  \"order\": {\n    \"_id\": \"66f3...\",\n    \"user\": \"66f0...\",\n    \"items\": [{ \"product\": \"66f2...\", \"quantity\": 1, \"price\": 1499.99 }],\n    \"totalAmount\": 1499.99,\n    \"status\": \"pending\",\n    \"paymentStatus\": \"pending\",\n    \"paymentMethod\": \"cod\"\n  }\n}\n```\n\n| Status | Cause |\n| --- | --- |\n| `401` | No token |\n| `400` | Validation error — empty `items`, missing `totalAmount`, `quantity < 1`, or an invalid enum value |\n\n> **Note:** `price` and `totalAmount` are taken from the request as-is; the server does not recompute them from the product catalogue, and stock is not decremented.",
+              "content": "Places an order for the logged-in user.\n\n`🔒 Authenticated`\n\n### Body\n\n| Field | Type | Required | Notes |\n| --- | --- | --- | --- |\n| `items` | array | ✅ | At least one entry |\n| `items[].product` | ObjectId | ✅ | |\n| `items[].quantity` | number | ✅ | Min `1` |\n| `items[].price` | number | ✅ | Unit price captured at order time |\n| `totalAmount` | number | ✅ | `>= 0` |\n| `shippingAddress` | object | ❌ | `street`, `city`, `state`, `zip`, `country` |\n| `paymentMethod` | enum | ❌ | `card` \\| `cod` \\| `paypal` — default `cod` |\n| `paymentStatus` | enum | ❌ | Default `pending` |\n| `status` | enum | ❌ | Default `pending` |\n| `user` | ObjectId | ❌ | **Admins only** — place an order on someone's behalf. Ignored for customers, who are always bound to their own token id. |\n\n### Responses\n\n**201 Created**\n```json\n{\n  \"message\": \"Order created successfully\",\n  \"order\": {\n    \"_id\": \"66f3...\",\n    \"user\": \"66f0...\",\n    \"items\": [{ \"product\": \"66f2...\", \"quantity\": 1, \"price\": 1499.99 }],\n    \"totalAmount\": 1499.99,\n    \"status\": \"pending\",\n    \"paymentStatus\": \"pending\",\n    \"paymentMethod\": \"cod\"\n  }\n}\n```\n\n| Status | Cause |\n| --- | --- |\n| `401` | No token |\n| `400` | Validation error — empty `items`, missing `totalAmount`, `quantity < 1`, or an invalid enum value |\n\n> **Note:** `price` and `totalAmount` in the request body are **ignored**. The server reads each product's current price from the database, computes the total itself, and decrements `stock` — so a client cannot order a 1500 item for 1. Send only `product` and `quantity` per item.\n\n| Extra 400 | Cause |\n| --- | --- |\n| `Product not found or unavailable: <id>` | Unknown product, or `isActive: false` |\n| `Only N left in stock for <name>` | Requested quantity exceeds stock |\n| `Invalid quantity for <name>` | Quantity is not a positive integer |",
               "type": "text/plain"
             },
             "url": {
@@ -1527,7 +1608,7 @@
           "name": "Update Order",
           "request": {
             "description": {
-              "content": "Partially updates an order.\n\n`🔒 Authenticated` — admins can update any order; customers only their own.\n\n### Field permissions\n\n| Field | admin | customer |\n| --- | --- | --- |\n| `status` | ✅ | 🚫 stripped from the payload |\n| `paymentStatus` | ✅ | 🚫 stripped |\n| `paymentMethod` | ✅ | 🚫 stripped |\n| `shippingAddress` | ✅ | ✅ |\n| `items`, `totalAmount` | ✅ | ✅ |\n\nDisallowed fields are silently removed rather than rejected — a customer sending `status` still gets a `200`, but nothing changes.\n\n### Example (customer-safe body)\n```json\n{\n  \"shippingAddress\": { \"city\": \"Lahore\", \"country\": \"Pakistan\" }\n}\n```\n\n| Status | Cause |\n| --- | --- |\n| `200` | `{ \"message\": \"Order updated successfully\", \"order\": { ... } }` |\n| `403` | `Forbidden` — not the owner and not an admin |\n| `404` | `Order not found` |",
+              "content": "Partially updates an order.\n\n`🔒 Authenticated` — admins can update any order; customers only their own.\n\n### Field permissions\n\n| Field | admin | customer |\n| --- | --- | --- |\n| `status` | ✅ | 🚫 stripped from the payload |\n| `paymentStatus` | ✅ | 🚫 stripped |\n| `paymentMethod` | ✅ | 🚫 stripped |\n| `shippingAddress` | ✅ | ✅ |\n| `items`, `totalAmount` | ✅ | ✅ |\n\nDisallowed fields are silently removed rather than rejected — a customer sending `status` still gets a `200`, but nothing changes.\n\n### Example (customer-safe body)\n```json\n{\n  \"shippingAddress\": { \"city\": \"Lahore\", \"country\": \"Pakistan\" }\n}\n```\n\n| Status | Cause |\n| --- | --- |\n| `200` | `{ \"message\": \"Order updated successfully\", \"order\": { ... } }` |\n| `403` | `Forbidden` — not the owner and not an admin |\n| `404` | `Order not found` |\n\n### Server-side guards (added with the storefront)\n\n- `items`, `totalAmount` and `user` are stripped from the body — pricing is the server's job.\n- A customer may set `status: \"cancelled\"` on their own order (nothing else); `shipped` and `delivered` orders refuse to cancel with a `400`.\n- Cancelling **restores stock** for every item in the order.",
               "type": "text/plain"
             },
             "url": {
@@ -1567,7 +1648,7 @@
           "name": "Delete Order",
           "request": {
             "description": {
-              "content": "Permanently deletes an order.\n\n`🔒 Authenticated`\n\n| Status | Body |\n| --- | --- |\n| `200` | `{ \"message\": \"Order deleted successfully\" }` |\n| `404` | `Order not found` |\n\n> **Known issue:** this route performs no ownership or role check — any authenticated user can delete any order by id. Add `authorizeRoles(\"admin\")` or an owner comparison before shipping.",
+              "content": "Permanently deletes an order.\n\n`🔒 Authenticated`\n\n| Status | Body |\n| --- | --- |\n| `200` | `{ \"message\": \"Order deleted successfully\" }` |\n| `404` | `Order not found` |\n\n> **Known issue:** this route performs no ownership or role check — any authenticated user can delete any order by id. Add `authorizeRoles(\"admin\")` or an owner comparison before shipping.\n\n> Ownership is now enforced: a customer deleting someone else's order gets `403`. (This route previously had no check at all.)",
               "type": "text/plain"
             },
             "url": {
@@ -2012,6 +2093,62 @@
           },
           "response": [],
           "event": []
+        }
+      ]
+    },
+    {
+      "id": "64042ea4-96f2-4ae8-b800-c07e65338210",
+      "name": "Stats",
+      "description": {
+        "content": "Admin dashboard numbers. One request, every figure computed by aggregation — no collection is ever pulled into memory.\n\n| Method | Path | Access |\n| --- | --- | --- |\n| `GET` | `/api/stats/overview` | 🔒 authenticated · 👑 admin only |\n\nCancelled orders are excluded from every revenue and sales figure.",
+        "type": "text/plain"
+      },
+      "event": [],
+      "item": [
+        {
+          "id": "fc58199e-4c41-48c9-8c5d-c0655dfdd3ee",
+          "name": "Dashboard Overview (admin)",
+          "request": {
+            "description": {
+              "content": "Everything the admin dashboard needs.\n\n`🔒 Authenticated` · `👑 admin only`\n\n### Response — 200 OK\n```json\n{\n  \"message\": \"Stats fetched successfully.\",\n  \"totals\": {\n    \"users\": 11, \"products\": 240, \"orders\": 20, \"comments\": 110,\n    \"revenue\": 58095.14, \"pendingRevenue\": 45321.37, \"paidOrders\": 11\n  },\n  \"ordersByStatus\": { \"pending\": 4, \"processing\": 1, \"shipped\": 6, \"delivered\": 5, \"cancelled\": 4 },\n  \"salesByDay\": [ { \"date\": \"2026-08-21\", \"revenue\": 103416.51, \"orders\": 16 } ],\n  \"topProducts\": [ { \"_id\": \"66f2...\", \"unitsSold\": 6, \"revenue\": 4732.2, \"name\": \"Oriental Wooden Chips\", \"price\": 788.7, \"images\": [\"...\"] } ],\n  \"lowStockProducts\": [ { \"_id\": \"66f2...\", \"name\": \"Rustic Cotton Sausages\", \"stock\": 2, \"price\": 1247.45 } ],\n  \"recentOrders\": [ { \"_id\": \"66f3...\", \"totalAmount\": 1200, \"status\": \"pending\", \"paymentStatus\": \"pending\", \"createdAt\": \"...\", \"user\": { \"name\": \"Ali\", \"email\": \"ali@example.com\" } } ]\n}\n```\n\n| Field | Meaning |\n| --- | --- |\n| `totals.revenue` | Sum of non-cancelled orders whose `paymentStatus` is `paid` |\n| `totals.pendingRevenue` | Same, for `paymentStatus: pending` — money not collected yet |\n| `ordersByStatus` | All five statuses always present, zero-filled |\n| `salesByDay` | Last **7 days**, one row per day that had orders, ascending |\n| `topProducts` | Top 5 by units sold; a deleted product shows as `(deleted product)` |\n| `lowStockProducts` | Active products with `stock <= 5`, lowest first, max 5 |\n\n| Status | Cause |\n| --- | --- |\n| `401` | Not logged in |\n| `403` | Logged in but not an admin |",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "stats",
+                "overview"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "66c861fd-d3eb-40ae-8d22-61c6c52afe4a",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    pm.test('All five order statuses are present', function () {",
+                  "        pm.expect(Object.keys(body.ordersByStatus)).to.have.lengthOf(5);",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
         }
       ]
     },

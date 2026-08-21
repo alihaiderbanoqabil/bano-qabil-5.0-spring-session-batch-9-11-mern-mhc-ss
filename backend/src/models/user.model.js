@@ -48,6 +48,14 @@ const userSchema = new mongoose.Schema(
             default: null,
             select: false, // don't return password by default
         },
+        // Forgot-password flow. Token DB mein bhi rakhte hain taake ek link sirf
+        // ek baar chale — reset ke baad isay null kar dete hain, to purana email
+        // dobara use nahi ho sakta (chahe JWT ki expiry baqi ho).
+        passwordResetToken: {
+            type: String,
+            default: null,
+            select: false,
+        },
 
         // embedding
         //  addresses: [{
