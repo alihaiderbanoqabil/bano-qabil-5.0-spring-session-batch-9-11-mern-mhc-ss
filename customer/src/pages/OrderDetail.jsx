@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ChevronLeft, MapPin, CreditCard, XCircle, ImageOff, CheckCircle2, AlertCircle } from "lucide-react";
 import toast from "react-hot-toast";
@@ -5,7 +6,7 @@ import Spinner from "../components/Spinner";
 import ErrorState from "../components/ErrorState";
 import { useCancelOrderMutation, useGetOrderByIdQuery } from "../store/api/orderApi";
 import { useGetPaymentConfigQuery } from "../store/api/paymentApi";
-import { useCreatePaymentSessionForOrder } from "../hooks/useStripeCheckout";
+import CardPaymentForm from "../components/CardPaymentForm";
 import { getApiError } from "../store/api/baseApi";
 import {
   formatCurrency,
@@ -22,10 +23,11 @@ export default function OrderDetail() {
   const { data: order, isLoading, error, refetch } = useGetOrderByIdQuery(id);
   const [cancelOrder, { isLoading: isCancelling }] = useCancelOrderMutation();
   const { data: paymentConfig } = useGetPaymentConfigQuery();
-  const { startPayment, isRedirecting } = useCreatePaymentSessionForOrder();
 
-  // Stripe wapis bhejte waqt ye query param lagata hai (success_url / cancel_url)
+  // ?payment=success 3D Secure ke redirect se aata hai; ?pay=1 checkout se
+  // (yani card form foran khol do)
   const paymentResult = searchParams.get("payment");
+  const [showCardForm, setShowCardForm] = useState(searchParams.get("pay") === "1");
 
   if (isLoading) return <Spinner label="Loading order..." />;
   if (error) return <ErrorState error={error} onRetry={refetch} />;
@@ -225,16 +227,36 @@ export default function OrderDetail() {
             </p>
           </div>
 
-          {canPayNow ? (
+          {canPayNow && !showCardForm ? (
             <button
               type="button"
-              onClick={() => startPayment(order._id)}
-              disabled={isRedirecting}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:bg-slate-300"
+              onClick={() => setShowCardForm(true)}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700"
             >
               <CreditCard size={16} />
-              {isRedirecting ? "Redirecting to Stripe..." : "Pay now with card"}
+              Pay now with card
             </button>
+          ) : null}
+
+          {canPayNow && showCardForm ? (
+            <div className="rounded-2xl border border-brand-200 bg-white p-5">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                <CreditCard size={15} className="text-brand-600" /> Pay with card
+              </h2>
+              <div className="mt-4">
+                {/* Payment ke baad order ko "paid" webhook karta hai — refetch
+                    us waqt tak pending dikhayega, phir socket khud update kar
+                    deta hai. Is liye yahan sirf banner ke liye refetch. */}
+                <CardPaymentForm
+                  orderId={order._id}
+                  amount={order.totalAmount}
+                  onPaid={() => {
+                    setShowCardForm(false);
+                    refetch();
+                  }}
+                />
+              </div>
+            </div>
           ) : null}
 
           {canCancel ? (

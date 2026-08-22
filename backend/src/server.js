@@ -27,6 +27,7 @@ const orderRoutes = require("./routes/order.routes");
 const commentRoutes = require("./routes/comment.routes");
 const statsRoutes = require("./routes/stats.routes");
 const paymentRoutes = require("./routes/payment.routes");
+const notificationRoutes = require("./routes/notification.routes");
 const { handleWebhook } = require("./controllers/payment.controller");
 const { initSocket } = require("./socket");
 
@@ -79,15 +80,49 @@ app.use(cors({
 // din mein Stripe ke retries 429 khane lagte.
 app.post("/api/payments/webhook", express.raw({ type: "application/json" }), handleWebhook);
 
-// Rate limiting — protects against brute force / abuse
+// ── Rate limiting ────────────────────────────────────────────────────────
+// Do alag limiters, kyunke dono ka maqsad alag hai:
+//
+//   1. Global limiter  -> abuse/scraping rokta hai. Ek normal SPA session ek
+//      hi page par kai requests karti hai (list + detail + comments + socket
+//      polling), is liye ye kushada hona chahiye — warna asli user ko 429
+//      milta hai jo koi ghalti nahi kar raha.
+//   2. Auth limiter    -> brute force rokta hai. Sirf NAKAAM koshishen ginta
+//      hai (skipSuccessfulRequests), to bar bar login karne wale developer ya
+//      user ko takleef nahi hoti, magar password guessing foran ruk jati hai.
+//
+// message ek OBJECT hai, string nahi: express-rate-limit string ko plain text
+// bhejta hai, aur phir frontend `res.json()` par SyntaxError khata hai
+// ("Unexpected token 'T'"). Object dene se 429 bhi wohi { message } shape
+// rakhta hai jo baqi saari errors ki hai.
+const TOO_MANY = { message: 'Too many requests from this IP, please try again in a few minutes.' };
+
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100,                 // limit each IP to 100 requests per window
+    max: 500,                 // per IP, per window
     standardHeaders: true,    // return rate limit info in RateLimit-* headers
     legacyHeaders: false,     // disable X-RateLimit-* headers
-    message: 'Too many requests from this IP, please try again later.',
+    message: TOO_MANY,
+    // Socket.IO ka long-polling aur uploads ki static files ginne ka koi
+    // faida nahi — ye abuse ka raasta nahi hain, magar limit foran khatam kar
+    // dete hain (ek realtime page khula rakhne se hi 429 aa jata tha).
+    skip: (req) => req.path.startsWith('/socket.io') || req.path.startsWith('/uploads'),
 });
 app.use(limiter);
+
+// Password guessing wale routes par sakht limit — sirf nakaam koshishen
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many attempts. Please wait a few minutes and try again.' },
+    skipSuccessfulRequests: true,
+});
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
+app.use('/api/auth/reset-password', authLimiter);
 
 // Middleware to parse JSON request bodies
 app.use(express.json()); 
@@ -106,6 +141,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/comments", commentRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api/notifications", notificationRoutes);
 app.use("/api/media", require("./routes/media.routes"));
 
 // Har route ke baad honi chahiye: upar jo bhi match na ho, wo yahan pakra jata hai.

@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { ShoppingCart, User, LogOut, Package, Menu, X, Search, ShoppingBag } from "lucide-react";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
-import { useGetMeQuery, useLogoutMutation } from "../store/api/authApi";
-import { selectCartCount } from "../store/slices/cartSlice";
+import { useLogoutMutation } from "../store/api/authApi";
+import { baseApi } from "../store/api/baseApi";
+import { clearCart, selectCartCount } from "../store/slices/cartSlice";
+import useAuthUser from "../hooks/useAuthUser";
 import NotificationBell from "./NotificationBell";
 
 const navLinkClass = ({ isActive }) =>
@@ -12,8 +14,9 @@ const navLinkClass = ({ isActive }) =>
 
 export default function Navbar() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const cartCount = useSelector(selectCartCount);
-  const { data: user } = useGetMeQuery();
+  const { user } = useAuthUser();
   const [logout, { isLoading: isLoggingOut }] = useLogoutMutation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [term, setTerm] = useState("");
@@ -27,12 +30,26 @@ export default function Navbar() {
   const handleLogout = async () => {
     try {
       await logout().unwrap();
-      toast.success("Logged out");
-      navigate("/");
     } catch {
       // Logout route kabhi fail nahi karta, magar network gir jaye to bata dein
       toast.error("Could not log out, please try again");
+      return;
     }
+
+    setMenuOpen(false);
+    // Route pehle badalte hain aur cache baad mein — React dono ko ek hi render
+    // mein batch karta hai, is liye protected page par baitha user seedha home
+    // par aata hai, RequireAuth ke login-redirect se guzre bagair.
+    navigate("/", { replace: true });
+    // Sirf getMe invalidate karna kaafi nahi hota: failed refetch par purana
+    // user cache mein reh jata hai. Poori API state reset karne se hi navbar
+    // fauran guest ban jata hai aur pichle user ki orders bhi cache se nikal
+    // jati hain.
+    dispatch(baseApi.util.resetApiState());
+    // Cart localStorage mein hai — agli baar koi aur is browser par login kare
+    // to usay pichle user ka cart na mile
+    dispatch(clearCart());
+    toast.success("Logged out");
   };
 
   return (
@@ -161,11 +178,9 @@ export default function Navbar() {
                 </Link>
                 <button
                   type="button"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    handleLogout();
-                  }}
-                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-rose-600 hover:bg-rose-50"
+                  onClick={handleLogout}
+                  disabled={isLoggingOut}
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
                 >
                   <LogOut size={16} /> Log out
                 </button>

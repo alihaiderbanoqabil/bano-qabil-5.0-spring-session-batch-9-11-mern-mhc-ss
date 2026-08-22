@@ -24,6 +24,8 @@
  *
  * PAGINATION
  *   ?page=2&limit=20
+ *   ?pagination=false                       → poora dataset, bina paging ke
+ *                                             (response ki shape wohi rehti hai)
  *
  * FIELD LIMITING
  *   ?fields=name,price,category             → include only these fields
@@ -43,7 +45,7 @@
  */
 
 // Keys consumed by the query service — never treated as filter fields
-const RESERVED_KEYS = new Set(['page', 'limit', 'sort', 'fields', 'search', 'searchFields']);
+const RESERVED_KEYS = new Set(['page', 'limit', 'sort', 'fields', 'search', 'searchFields', 'pagination']);
 
 // Bracket-notation operators that may be promoted to their MongoDB $ equivalents
 const OPERATORS = new Set(['gt', 'gte', 'lt', 'lte', 'ne', 'in', 'nin']);
@@ -186,18 +188,46 @@ const queryService = async (Model, query = {}, options = {}) => {
     const sort = query.sort ? query.sort.split(',').join(' ') : '-createdAt';
 
     // ── 5. Pagination ────────────────────────────────────────────────────────
+    // Default ON. `?pagination=false` par poora dataset wapis aata hai — un
+    // jagahon ke liye jahan page-by-page mangwana bemani hai (dropdowns,
+    // export, "saari categories").
+    //
+    // Response ki shape dono soorat mein ek jaisi rehti hai (data + pagination),
+    // taake client ko do alag shapes handle na karni parein. `paginated` flag
+    // batata hai ke paging lagi thi ya nahi.
+    const paginationEnabled = String(query.pagination).toLowerCase() !== 'false';
+
     const page = Math.max(1, parseInt(query.page, 10) || 1);
     const limit = Math.min(maxLimit, Math.max(1, parseInt(query.limit, 10) || defaultLimit));
     const skip = (page - 1) * limit;
 
     // ── 6. Execute ───────────────────────────────────────────────────────────
-    let dbQuery = Model.find(filter).select(fields).sort(sort).skip(skip).limit(limit);
+    let dbQuery = Model.find(filter).select(fields).sort(sort);
+
+    if (paginationEnabled) {
+        dbQuery = dbQuery.skip(skip).limit(limit);
+    }
 
     for (const pop of populate) {
         dbQuery = dbQuery.populate(pop.path, pop.select ?? '');
     }
 
     const [data, total] = await Promise.all([dbQuery, Model.countDocuments(filter)]);
+
+    if (!paginationEnabled) {
+        return {
+            data,
+            pagination: {
+                total,
+                page: 1,
+                limit: total,
+                totalPages: total ? 1 : 0,
+                hasNextPage: false,
+                hasPrevPage: false,
+                paginated: false,
+            },
+        };
+    }
 
     const totalPages = Math.ceil(total / limit);
 
@@ -210,6 +240,7 @@ const queryService = async (Model, query = {}, options = {}) => {
             totalPages,
             hasNextPage: page < totalPages,
             hasPrevPage: page > 1,
+            paginated: true,
         },
     };
 };

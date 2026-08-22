@@ -1,5 +1,5 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { useGetMeQuery } from "../store/api/authApi";
+import useAuthUser from "../hooks/useAuthUser";
 import Spinner from "./Spinner";
 
 /**
@@ -14,7 +14,7 @@ import Spinner from "./Spinner";
  */
 export default function RequireAuth() {
   const location = useLocation();
-  const { data: user, isLoading } = useGetMeQuery();
+  const { user, isLoading } = useAuthUser();
 
   if (isLoading) return <Spinner label="Checking your session..." />;
 

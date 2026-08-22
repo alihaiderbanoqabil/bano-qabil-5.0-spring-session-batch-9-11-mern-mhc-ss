@@ -14,7 +14,7 @@ export const rules = {
   },
   password: {
     required: "Password is required",
-    minLength: { value: 6, message: "Password must be at least 6 characters" },
+    minLength: { value: 8, message: "Password must be at least 8 characters" },
   },
   // Optional field. Sirf itna dekhte hain ke kaafi digits hain — format par
   // sakhti nahi, kyunke asli numbers mein extensions ("x064"), country codes

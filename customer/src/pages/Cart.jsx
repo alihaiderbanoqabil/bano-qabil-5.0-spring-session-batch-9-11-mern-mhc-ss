@@ -11,14 +11,14 @@ import {
   selectCartTotal,
 } from "../store/slices/cartSlice";
 import { formatCurrency } from "../utils/format";
-import { useGetMeQuery } from "../store/api/authApi";
+import useAuthUser from "../hooks/useAuthUser";
 
 export default function Cart() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const items = useSelector(selectCartItems);
   const total = useSelector(selectCartTotal);
-  const { data: user } = useGetMeQuery();
+  const { user } = useAuthUser();
 
   if (items.length === 0) {
     return (

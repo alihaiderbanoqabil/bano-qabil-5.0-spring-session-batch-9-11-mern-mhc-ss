@@ -8,9 +8,8 @@ import EmptyState from "../components/EmptyState";
 import { rules } from "../utils/validators";
 import { clearCart, selectCartItems, selectCartTotal } from "../store/slices/cartSlice";
 import { formatCurrency } from "../utils/format";
-import { useGetMeQuery } from "../store/api/authApi";
+import { useAuthUser } from "../hooks/useAuthUser";
 import { useCreateOrderMutation } from "../store/api/orderApi";
-import { useCreatePaymentSessionForOrder } from "../hooks/useStripeCheckout";
 import { useGetPaymentConfigQuery } from "../store/api/paymentApi";
 import { getApiError } from "../store/api/baseApi";
 
@@ -25,11 +24,10 @@ export default function Checkout() {
   const navigate = useNavigate();
   const items = useSelector(selectCartItems);
   const total = useSelector(selectCartTotal);
-  const { data: user } = useGetMeQuery();
+  const { user } = useAuthUser();
   const [createOrder, { isLoading }] = useCreateOrderMutation();
   // Server batata hai ke Stripe ki keys lagi hain ya nahi
   const { data: paymentConfig } = useGetPaymentConfigQuery();
-  const { startPayment, isRedirecting } = useCreatePaymentSessionForOrder();
   const cardEnabled = paymentConfig?.cardPaymentsEnabled;
 
   const {
@@ -82,18 +80,13 @@ export default function Checkout() {
       const result = await createOrder(payload).unwrap();
       dispatch(clearCart());
 
-      // Card wali order ke liye Stripe ke hosted page par bhej dete hain.
-      // Order pehle se ban chuki hoti hai (paymentStatus: pending) — payment
-      // ka faisla webhook karta hai, is liye user beech mein chhor de to bhi
-      // order uski history mein "unpaid" ki tarah mojood rehti hai.
+      // Card wali order: pehle order banti hai (paymentStatus: pending), phir
+      // order page par card form khulta hai. Order pehle banane ka faida — user
+      // payment beech mein chhor de to bhi order uski history mein rehti hai
+      // aur baad mein "Pay now" se pura kiya ja sakta hai.
       if (values.paymentMethod === "card" && cardEnabled) {
-        toast.success("Order created — redirecting to secure payment");
-        const redirected = await startPayment(result.order._id);
-        if (redirected) return;
-
-        // Session na ban sake to user ko order page par bhej dete hain,
-        // jahan se wo dobara "Pay now" kar sakta hai
-        navigate(`/orders/${result.order._id}`, { replace: true });
+        toast.success("Order created — complete the payment to confirm it");
+        navigate(`/orders/${result.order._id}?pay=1`, { replace: true });
         return;
       }
 
@@ -184,8 +177,8 @@ export default function Checkout() {
 
             {paymentMethod === "card" ? (
               <p className="mt-4 rounded-lg bg-brand-50 p-3 text-xs text-brand-700">
-                You will be redirected to Stripe to pay. Card details never touch this site, and the
-                order is only marked paid once Stripe confirms it.
+                The card form opens on the next step. Card details go straight to Stripe — this site
+                never sees them — and the order is only marked paid once Stripe confirms it.
               </p>
             ) : null}
           </section>
@@ -214,16 +207,14 @@ export default function Checkout() {
 
           <button
             type="submit"
-            disabled={isLoading || isRedirecting}
+            disabled={isLoading}
             className="mt-5 w-full rounded-lg bg-brand-600 py-3 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
-            {isRedirecting
-              ? "Redirecting to Stripe..."
-              : isLoading
-                ? "Placing order..."
-                : paymentMethod === "card" && cardEnabled
-                  ? "Pay with card"
-                  : "Place order"}
+            {isLoading
+              ? "Placing order..."
+              : paymentMethod === "card" && cardEnabled
+                ? "Continue to payment"
+                : "Place order"}
           </button>
 
           <p className="mt-3 text-center text-xs text-slate-400">

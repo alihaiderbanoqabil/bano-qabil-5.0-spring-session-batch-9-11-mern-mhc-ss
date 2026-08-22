@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, App, Button, Card, Flex, Input, Popconfirm, Space, Table, Tag, Typography } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import {
+  CATEGORY_DROPDOWN_PARAMS,
   useDeleteCategoryMutation,
   useGetCategoriesQuery,
 } from "../store/api/categoryApi";
@@ -32,9 +33,11 @@ export default function Categories() {
     return next;
   }, [page, limit, sort, search]);
 
+  // Table apni paging khud karti hai (page/limit/search)
   const { data, isFetching, error } = useGetCategoriesQuery(params);
-  // Parent select ko poori list chahiye, sirf current page nahi
-  const { data: allCategories } = useGetCategoriesQuery({ limit: 100, sort: "name" });
+  // Parent select ko poori list chahiye, sirf current page nahi — aur Products
+  // page bhi bilkul yehi params bhejta hai, is liye cache dono ke beech share hota hai
+  const { data: allCategories } = useGetCategoriesQuery(CATEGORY_DROPDOWN_PARAMS);
   const [deleteCategory, { isLoading: deleting }] = useDeleteCategoryMutation();
 
   const handleDelete = async (record) => {

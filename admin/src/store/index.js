@@ -11,5 +11,10 @@ export const store = configureStore({
   middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(baseApi.middleware),
 });
 
-// refetchOnFocus / refetchOnReconnect ko chalne deta hai
+/**
+ * Ye browser ke `focus` / `online` events ko RTK Query actions mein badalta hai.
+ * Iske bagair baseApi ka `refetchOnReconnect: true` aur pages par diya gaya
+ * `refetchOnFocus: true` dono khamosh reh jate hain — koi error nahi aata,
+ * bas kuch hota hi nahi.
+ */
 setupListeners(store.dispatch);

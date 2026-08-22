@@ -53,8 +53,7 @@ cd ../backend && npm run seed
 
 `src/socket.js` ek hi socket banata hai; `src/components/RealtimeListener.jsx`
 App mein mount hai aur events ko teen cheezon mein badalta hai: toast, bell ki
-list (`notificationSlice`), aur RTK Query cache invalidation — yani UI khud
-refresh ho jata hai, refetch button dabane ki zarorat nahi.
+list, aur RTK Query cache invalidation — yani UI khud refresh ho jata hai.
 
 | Event | Kisko | Kya hota hai |
 | --- | --- | --- |
@@ -65,21 +64,45 @@ refresh ho jata hai, refetch button dabane ki zarorat nahi.
 URL nahi diya jata — socket usi origin se judta hai aur vite `/socket.io` ko
 backend par proxy karta hai (`ws: true`), is liye auth cookie khud chali jati hai.
 
+### Notifications rehti hain (persist)
+
+Socket sirf un tak pohanchata hai jo abhi juday hue hain. Is liye har
+notification pehle server par save hoti hai (`Notification` model), phir emit
+hoti hai. Nateeja:
+
+- page refresh karne par notifications gayab nahi hotin
+- jo notification aap ke offline hone ke doran aayi thi, wapis aane par mil jati hai
+- "mark as read" (ek) aur "mark all as read" dono server par mehfooz rehte hain
+
+Bell `useGetNotificationsQuery` se list leta hai; socket event aane par
+`updateQueryData` se list ke upar naya item lag jata hai (refetch ke bagair).
+Mark-as-read optimistic hai — badge foran girta hai, request fail ho to
+`patch.undo()` wapis le aata hai.
+
+Guest ko live toast to milta hai magar list nahi (notification kisi user ke
+sath bandhi hoti hai), is liye guest ke liye bell chhupi rehti hai.
+
 ## Payments (Stripe)
 
-Card wali order par flow: order pehle banti hai (`paymentStatus: pending`) →
-`POST /api/payments/checkout-session` → browser Stripe ke hosted page par jata
-hai → wapis `?payment=success|cancelled` ke sath. **Paid** hone ka faisla
-webhook karta hai, success URL nahi (usay customer khud bhi khol sakta hai) —
-is liye jab tak webhook na aaye, page "confirming your payment" dikhata hai,
-aur webhook aane par socket se khud paid ho jata hai.
+Card ka form site par hi khulta hai — **Stripe Elements**. Card ki details
+Stripe ke iframe se seedha Stripe ko jati hain, hamare JS ya server ke paas
+kabhi nahi aatin.
 
-Order detail par "Pay now with card" button unpaid order ke liye hamesha
-mojood rehta hai, to beech mein chhora hua payment baad mein pura kiya ja
-sakta hai.
+Flow: card chuno → order banti hai (`paymentStatus: pending`) → order page par
+card form (`?pay=1`) → `POST /api/payments/payment-intent` se `clientSecret` →
+`stripe.confirmPayment()`.
 
-Stripe ki keys server par na hon to checkout par Card option khud disabled ho
-jata hai (`/api/payments/config` se).
+**Paid** hone ka faisla webhook karta hai, browser nahi — is liye payment ke
+foran baad page "confirming your payment" dikhata hai, aur webhook aate hi
+socket se khud paid ho jata hai. Order detail par "Pay now with card" button
+har unpaid order ke liye mojood rehta hai, to beech mein chhora hua payment
+baad mein pura kiya ja sakta hai.
+
+Publishable key frontend ke `.env` mein nahi — `/api/payments/config` se aati
+hai. Stripe ki keys server par na hon to Card option khud disabled ho jata hai.
+
+Tafseel: [`docs/stripe-integration.md`](../docs/stripe-integration.md) aur
+[`docs/socketio-integration.md`](../docs/socketio-integration.md).
 
 ## Notes
 

@@ -4,7 +4,7 @@ This folder holds the complete, importable Postman documentation for the backend
 
 | File | Purpose |
 | --- | --- |
-| `bano-qabil-backend-api.postman_collection.json` | **Import this one.** The collection — 42 requests across 9 folders, with full markdown docs, example responses and test scripts. Named *Bano Qabil Backend API*. |
+| `bano-qabil-backend-api.postman_collection.json` | **Import this one.** The collection — 46 requests across 10 folders, with full markdown docs, example responses and test scripts. Named *Bano Qabil Backend API*. |
 | `bano-qabil-backend.postman_collection.json` | Identical, but named *bano-qabil-backend*. Only use it if no collection by that name already exists in your workspace. |
 | `bano-qabil-local.postman_environment.json` | Environment holding `base_url`, `token` and the id variables the scripts populate |
 
@@ -157,4 +157,7 @@ These are documented in detail on the individual requests, but they trip people 
 - **Password reset links are one-time** — the token is stored on the user and cleared on use.
 - **Card payments need Stripe keys.** With `STRIPE_SECRET_KEY` unset, `/api/payments/config` reports `cardPaymentsEnabled: false`, the other payment routes answer `503`, and the storefront disables its Card option. Everything else (COD orders, browsing) works regardless.
 - **Only the Stripe webhook marks an order paid** — not the `success_url`, which a customer could open by hand.
+- **`?pagination=false` returns everything** on any list route, in the same response shape (`pagination.paginated: false`). Use it for dropdowns and exports, not for the main product grid.
+- **`GET /api/orders?search=` searches orders.** For admins it matches the customer's name, email **or** an order id; for customers it matches an order id only, always scoped to their own orders. Short ids (`#77EA296E`) and full ids both work.
+- **Notifications are stored, not just emitted** — `GET /api/notifications` is what survives a refresh; the socket is only the live copy.
 - **Socket.IO shares the port and the auth cookie.** `product:new` goes to everyone, `order:status` only to the order's owner, `order:new` only to admins.

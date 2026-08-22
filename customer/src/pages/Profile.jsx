@@ -4,12 +4,13 @@ import toast from "react-hot-toast";
 import Field from "../components/Field";
 import Spinner from "../components/Spinner";
 import { rules } from "../utils/validators";
-import { useGetMeQuery, useUpdateProfileMutation } from "../store/api/authApi";
+import { useUpdateProfileMutation } from "../store/api/authApi";
+import useAuthUser from "../hooks/useAuthUser";
 import { getApiError } from "../store/api/baseApi";
 import { formatDate } from "../utils/format";
 
 export default function Profile() {
-  const { data: user, isLoading } = useGetMeQuery();
+  const { user, isLoading } = useAuthUser();
   const [updateProfile, { isLoading: isSaving }] = useUpdateProfileMutation();
 
   const details = useForm({
@@ -91,11 +92,13 @@ export default function Profile() {
         <form onSubmit={details.handleSubmit(saveDetails)} className="mt-4 grid gap-4 sm:grid-cols-2" noValidate>
           <Field
             label="Full name"
+            placeholder="Ali Haider"
             error={details.formState.errors.name}
             {...details.register("name", rules.name)}
           />
           <Field
             label="Phone"
+            placeholder="03001234567"
             hint="Optional"
             error={details.formState.errors.phone}
             {...details.register("phone", rules.phone)}
@@ -117,13 +120,29 @@ export default function Profile() {
           <Field
             label="Street"
             className="sm:col-span-2"
+            placeholder="House 12, Street 4, Gulshan"
             error={details.formState.errors.street}
             {...details.register("street")}
           />
-          <Field label="City" error={details.formState.errors.city} {...details.register("city")} />
-          <Field label="State" error={details.formState.errors.state} {...details.register("state")} />
-          <Field label="ZIP" error={details.formState.errors.zip} {...details.register("zip")} />
-          <Field label="Country" error={details.formState.errors.country} {...details.register("country")} />
+          <Field
+            label="City"
+            placeholder="Karachi"
+            error={details.formState.errors.city}
+            {...details.register("city")}
+          />
+          <Field
+            label="State"
+            placeholder="Sindh"
+            error={details.formState.errors.state}
+            {...details.register("state")}
+          />
+          <Field label="ZIP" placeholder="75500" error={details.formState.errors.zip} {...details.register("zip")} />
+          <Field
+            label="Country"
+            placeholder="Pakistan"
+            error={details.formState.errors.country}
+            {...details.register("country")}
+          />
 
           <div className="sm:col-span-2">
             <button
@@ -150,6 +169,7 @@ export default function Profile() {
           <Field
             label="New password"
             type="password"
+            placeholder="At least 8 characters"
             autoComplete="new-password"
             error={passwordForm.formState.errors.password}
             {...passwordForm.register("password", rules.password)}
@@ -157,6 +177,7 @@ export default function Profile() {
           <Field
             label="Confirm new password"
             type="password"
+            placeholder="Re-enter your new password"
             autoComplete="new-password"
             error={passwordForm.formState.errors.confirmPassword}
             {...passwordForm.register("confirmPassword", rules.confirmPassword(passwordForm.getValues))}

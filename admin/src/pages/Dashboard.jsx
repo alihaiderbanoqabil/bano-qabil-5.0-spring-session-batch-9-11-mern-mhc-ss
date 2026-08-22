@@ -31,7 +31,12 @@ import {
 const statCardProps = { size: "small" };
 
 export default function Dashboard() {
-  const { data, isLoading, error } = useGetOverviewQuery();
+  // Cache ab 5 minute rehta hai (baseApi), jo navigation ke liye theek hai —
+  // magar dashboard wo screen hai jo admin khol kar chhor deta hai. Tab wapis
+  // aane par numbers dobara mangwa lete hain, warna aadhe ghante purana
+  // revenue dikhta rehta. Socket bhi Stats invalidate karta hai, magar wo sirf
+  // tab kaam karta hai jab connection zinda ho — ye uska safety net hai.
+  const { data, isLoading, error } = useGetOverviewQuery(undefined, { refetchOnFocus: true });
 
   if (isLoading) {
     return (

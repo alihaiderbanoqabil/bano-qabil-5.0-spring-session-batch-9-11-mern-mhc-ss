@@ -1,26 +1,96 @@
+const mongoose = require("mongoose");
 const Order = require("../models/order.model");
 const Product = require("../models/product.model");
+const User = require("../models/user.model");
 const AppError = require("../utils/AppError");
 const { queryService } = require("../utils/queryService");
-const { notifyOrderStatus, notifyNewOrder } = require("../socket");
+const { notifyOrderStatus, notifyNewOrder } = require("../services/notification.service");
+
+/**
+ * Order id se match karne ki condition banata hai.
+ *
+ * UI order ko chhota kar ke dikhata hai — "#486AB5B5" (poori ObjectId ke
+ * aakhri 8 characters). User wohi copy kar ke search karta hai, is liye poori
+ * id ke sath sath tukra bhi chalna chahiye.
+ *
+ * _id BSON ObjectId hai, string nahi — is par seedha regex nahi lagta. Is liye
+ * $expr + $toString use karte hain, jo id ko hex string bana kar match karta
+ * hai. Ye index use nahi kar sakta (collection scan hai), magar poori id aane
+ * par hum us se pehle hi seedha _id par match kar lete hain — jo indexed hai.
+ */
+const buildOrderIdCondition = (term) => {
+    // UI "#" ke sath dikhata hai; user usay bhi paste kar sakta hai
+    const cleaned = String(term).trim().replace(/^#/, "");
+
+    // Sirf hex characters — warna har naam ki search par bhi poora scan chalta
+    if (!/^[0-9a-fA-F]+$/.test(cleaned)) return null;
+
+    // Poori id: seedha _id match, indexed aur sab se tez
+    if (mongoose.isValidObjectId(cleaned) && cleaned.length === 24) {
+        return { _id: new mongoose.Types.ObjectId(cleaned) };
+    }
+
+    return {
+        $expr: {
+            $regexMatch: {
+                input: { $toString: "$_id" },
+                regex: cleaned,
+                options: "i", // UI uppercase dikhata hai, ObjectId lowercase hoti hai
+            },
+        },
+    };
+};
 
 const getOrders = async (req, res) => {
-    // const filter = req.user.role === "admin" ? {} : { user: req.user.id };
-    // const orders = await Order.find(filter).populate("user", "name email").populate("items.product", "name price");
-    // return res.json(orders);
+    const isAdmin = req.user.role === "admin";
 
-    const result = await queryService(Order, req.query,
-        {
-            baseFilter: req.user.role === "admin" ? {} : { user: req.user.id },            // always-on server-side filter
+    // Customer sirf apni orders dekhta hai
+    const baseFilter = isAdmin ? {} : { user: req.user.id };
 
-            populate: [
-                { path: 'user', select: 'name email' }, 
-                { path: 'items.product', select: 'name price' }
-            ],
+    // ── Search ────────────────────────────────────────────────────────────
+    // Admin  : customer ke naam/email se, ya order id se
+    // Customer: sirf order id se — uski saari orders uski apni hi hain, naam
+    //           se dhoondne ka koi matlab nahi
+    //
+    // Naam Order par nahi, User par hota hai, aur MongoDB do collections ke
+    // beech regex search seedha nahi kar sakta. Is liye do qadam: pehle
+    // matching users dhoondo, phir un ki ids se orders filter karo.
+    const { search, ...query } = req.query;
 
+    if (search) {
+        const conditions = [];
+
+        const idCondition = buildOrderIdCondition(search);
+        if (idCondition) conditions.push(idCondition);
+
+        if (isAdmin) {
+            const escaped = String(search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const matchingUsers = await User.find({
+                $or: [
+                    { name: { $regex: escaped, $options: "i" } },
+                    { email: { $regex: escaped, $options: "i" } },
+                ],
+            }).select("_id");
+
+            if (matchingUsers.length) {
+                conditions.push({ user: { $in: matchingUsers.map((user) => user._id) } });
+            }
         }
-    );
-  return res.json({ message: "Orders fetched successfully.", ...result });
+
+        // Kuch bhi match na kare to khali list — warna search lagta hi nahi
+        // aur saari orders wapis chali jatin
+        baseFilter.$or = conditions.length ? conditions : [{ _id: null }];
+    }
+
+    const result = await queryService(Order, query, {
+        baseFilter,
+        populate: [
+            { path: 'user', select: 'name email' },
+            { path: 'items.product', select: 'name price' },
+        ],
+    });
+
+    return res.json({ message: "Orders fetched successfully.", ...result });
 };
 
 const getOrderById = async (req, res) => {
@@ -138,7 +208,7 @@ const updateOrder = async (req, res) => {
     // Status waqai badla ho tab hi notification — warna address edit karne par
     // bhi customer ko "order updated" ping chala jata
     if (order.status !== previousStatus) {
-        notifyOrderStatus({ order, previousStatus });
+        await notifyOrderStatus({ order, previousStatus });
     }
 
     // Cancel hone par stock wapis shelf par — warna cancelled orders inventory

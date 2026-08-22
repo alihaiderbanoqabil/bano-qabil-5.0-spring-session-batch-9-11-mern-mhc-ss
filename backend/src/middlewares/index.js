@@ -70,7 +70,7 @@ const authenticate = (req, res, next) => {
     const token = getTokenFromRequest(req);
 
     if (!token) {
-        throw new AppError("Authentication required", 401);
+        throw new AppError("Login required for this action.", 401);
     }
 
     // jwt.verify JsonWebTokenError / TokenExpiredError throw karta hai. Express
@@ -102,7 +102,7 @@ const optionalAuthenticate = (req, res, next) => {
 
 const authorizeRoles = (...roles) => (req, res, next) => {
     if (!req.user) {
-        throw new AppError("Authentication required", 401);
+        throw new AppError("Login required for this action.", 401);
     }
 
     if (!roles.includes(req.user.role)) {

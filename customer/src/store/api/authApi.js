@@ -23,7 +23,11 @@ export const authApi = baseApi.injectEndpoints({
 
     logout: builder.mutation({
       query: () => ({ url: "/auth/logout", method: "POST" }),
-      invalidatesTags: ["Auth", "Order"],
+      // Yahan `invalidatesTags` jaan boojh kar nahi hai. Invalidate karne se
+      // getMe dobara chalti hai aur 401 khaati hai — magar RTK Query failed
+      // refetch par purana user cache mein chhor deta hai, is liye UI logged-in
+      // hi rehta hai. Navbar mutation ke baad poori API state reset karta hai,
+      // jo iss se zyada saaf hai (pichle user ki orders bhi saath jati hain).
     }),
 
     verifyEmail: builder.query({

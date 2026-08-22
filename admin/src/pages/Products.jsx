@@ -16,7 +16,7 @@ import {
 } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { useDeleteProductMutation, useGetProductsQuery } from "../store/api/productApi";
-import { useGetCategoriesQuery } from "../store/api/categoryApi";
+import { CATEGORY_DROPDOWN_PARAMS, useGetCategoriesQuery } from "../store/api/categoryApi";
 import { getApiError } from "../store/api/baseApi";
 import { formatCurrency, LOW_STOCK_THRESHOLD } from "../utils/format";
 import useDebouncedValue from "../utils/useDebouncedValue";
@@ -53,7 +53,9 @@ export default function Products() {
   }, [page, limit, sort, search, category, priceRange]);
 
   const { data, isFetching, error, refetch } = useGetProductsQuery(params);
-  const { data: categoryData } = useGetCategoriesQuery({ limit: 100, sort: "name" });
+  // Category filter aur drawer ka select — dono ko poori list chahiye, sirf
+  // pehla page nahi
+  const { data: categoryData } = useGetCategoriesQuery(CATEGORY_DROPDOWN_PARAMS);
   const [deleteProduct, { isLoading: deleting }] = useDeleteProductMutation();
 
   const categories = categoryData?.data || [];

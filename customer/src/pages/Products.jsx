@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { PackageSearch, SlidersHorizontal, X } from "lucide-react";
+import { LayoutGrid, List, PackageSearch, SlidersHorizontal, X } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import Pagination from "../components/Pagination";
 import Spinner from "../components/Spinner";
@@ -19,6 +19,29 @@ const SORT_OPTIONS = [
 
 const PAGE_SIZE = 12;
 
+const VIEW_STORAGE_KEY = "shopkart_products_view";
+
+const VIEW_OPTIONS = [
+  { value: "grid", label: "Grid view", icon: LayoutGrid },
+  { value: "list", label: "List view", icon: List },
+];
+
+/**
+ * Grid/list ka faisla filters ki tarah URL mein nahi rakha. Filters batate
+ * hain "kaun se products dikhen" — wo share/bookmark hone chahiyen. View sirf
+ * "kaise dikhen" hai, yani banday ki apni pasand: link share karne par saamne
+ * wale ka layout nahi badalna chahiye, magar refresh aur agli visit par apni
+ * pasand yaad rehni chahiye. Cart ki tarah localStorage isi kaam ka hai.
+ */
+const loadView = () => {
+  try {
+    return localStorage.getItem(VIEW_STORAGE_KEY) === "list" ? "list" : "grid";
+  } catch {
+    // Private mode / storage band ho to grid default rehta hai
+    return "grid";
+  }
+};
+
 // Tree ko flat kar dete hain taake ek hi <select> mein parents + children aa jayen
 const flattenCategories = (nodes = [], depth = 0) =>
   nodes.flatMap((node) => [
@@ -32,6 +55,7 @@ export default function Products() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [showFilters, setShowFilters] = useState(false);
   const [searchDraft, setSearchDraft] = useState(searchParams.get("search") || "");
+  const [view, setView] = useState(loadView);
 
   const page = Number(searchParams.get("page")) || 1;
   const category = searchParams.get("category") || "";
@@ -70,6 +94,11 @@ export default function Products() {
     setSearchParams(next);
   };
 
+  const changeView = (next) => {
+    setView(next);
+    localStorage.setItem(VIEW_STORAGE_KEY, next);
+  };
+
   const activeFilterCount = [category, minPrice, maxPrice, minRating].filter(Boolean).length;
   const products = data?.data || [];
 
@@ -81,7 +110,8 @@ export default function Products() {
             {search ? `Results for "${search}"` : "All products"}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            {data?.pagination ? `${data.pagination.total} products found` : "Loading..."}
+            {/* {data?.pagination ? `${data.pagination.total} products found` : "Loading..."} */}
+           {data?.pagination?.total || 0} products found
           </p>
         </div>
 
@@ -109,6 +139,23 @@ export default function Products() {
               </option>
             ))}
           </select>
+
+          <div className="flex items-center gap-0.5 rounded-lg border border-slate-300 bg-white p-0.5">
+            {VIEW_OPTIONS.map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => changeView(value)}
+                aria-label={label}
+                aria-pressed={view === value}
+                className={`flex h-9 w-9 items-center justify-center rounded-md transition ${
+                  view === value ? "bg-brand-600 text-white" : "text-slate-500 hover:bg-slate-100"
+                }`}
+              >
+                <Icon size={16} />
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -225,12 +272,14 @@ export default function Products() {
           ) : (
             <>
               <div
-                className={`grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4 ${
-                  isFetching ? "opacity-60 transition" : ""
-                }`}
+                className={`${
+                  view === "list"
+                    ? "flex flex-col gap-4"
+                    : "grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4"
+                } ${isFetching ? "opacity-60 transition" : ""}`}
               >
                 {products.map((product) => (
-                  <ProductCard key={product._id} product={product} />
+                  <ProductCard key={product._id} product={product} view={view} />
                 ))}
               </div>
 

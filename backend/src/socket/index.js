@@ -87,11 +87,14 @@ const initSocket = (httpServer) => {
 };
 
 /**
- * Emit karne wale helpers.
+ * Emit karne wale helpers — ye file sirf transport hai.
  *
- * Har helper `io` ke null hone par chup chaap wapis aa jata hai — is liye
- * seed script ya tests jahan HTTP server nahi chal raha, wahan controllers
- * crash nahi karte.
+ * "Kaun si notification kab jati hai" wo faisla
+ * services/notification.service.js karta hai (wahi DB record bhi banata hai).
+ *
+ * Har helper `io` ke null hone par chup chaap wapis aa jata hai — is liye seed
+ * script ya tests jahan HTTP server nahi chal raha, wahan controllers crash
+ * nahi karte.
  */
 const emitToEveryone = (event, payload) => {
   if (!io) return;
@@ -108,63 +111,11 @@ const emitToAdmins = (event, payload) => {
   io.to(ROOMS.admins).emit(event, payload);
 };
 
-// ── Domain events ────────────────────────────────────────────────────────
-// Controllers inhe call karte hain, raw event names nahi — is se event ka
-// naam aur payload ki shape ek jagah rehti hai.
-
-const notifyNewProduct = (product) => {
-  emitToEveryone("product:new", {
-    type: "product:new",
-    productId: product._id,
-    name: product.name,
-    price: product.price,
-    image: product.images?.[0] || null,
-    createdAt: new Date().toISOString(),
-  });
-};
-
-const notifyOrderStatus = ({ order, previousStatus }) => {
-  emitToUser(order.user, "order:status", {
-    type: "order:status",
-    orderId: order._id,
-    status: order.status,
-    paymentStatus: order.paymentStatus,
-    previousStatus,
-    totalAmount: order.totalAmount,
-    createdAt: new Date().toISOString(),
-  });
-};
-
-const notifyNewOrder = (order) => {
-  emitToAdmins("order:new", {
-    type: "order:new",
-    orderId: order._id,
-    totalAmount: order.totalAmount,
-    itemCount: order.items?.length || 0,
-    createdAt: new Date().toISOString(),
-  });
-};
-
-const notifyPaymentUpdate = ({ order }) => {
-  const payload = {
-    type: "order:payment",
-    orderId: order._id,
-    paymentStatus: order.paymentStatus,
-    status: order.status,
-    totalAmount: order.totalAmount,
-    createdAt: new Date().toISOString(),
-  };
-
-  emitToUser(order.user, "order:payment", payload);
-  emitToAdmins("order:payment", payload);
-};
-
 module.exports = {
   initSocket,
   getIO: () => io,
   ROOMS,
-  notifyNewProduct,
-  notifyOrderStatus,
-  notifyNewOrder,
-  notifyPaymentUpdate,
+  emitToEveryone,
+  emitToUser,
+  emitToAdmins,
 };

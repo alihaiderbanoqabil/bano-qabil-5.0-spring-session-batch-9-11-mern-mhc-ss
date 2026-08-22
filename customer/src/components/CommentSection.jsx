@@ -8,7 +8,7 @@ import StarInput from "./StarInput";
 import Spinner from "./Spinner";
 import Field from "./Field";
 import { formatDate } from "../utils/format";
-import { useGetMeQuery } from "../store/api/authApi";
+import useAuthUser from "../hooks/useAuthUser";
 import {
   useGetProductCommentsQuery,
   useCreateCommentMutation,
@@ -33,7 +33,7 @@ function RatingBar({ star, count, total }) {
 }
 
 export default function CommentSection({ productId }) {
-  const { data: user } = useGetMeQuery();
+  const { user } = useAuthUser();
   const { data, isLoading, error } = useGetProductCommentsQuery({ productId, limit: 20 });
   const [createComment, { isLoading: isCreating }] = useCreateCommentMutation();
   const [updateComment] = useUpdateCommentMutation();

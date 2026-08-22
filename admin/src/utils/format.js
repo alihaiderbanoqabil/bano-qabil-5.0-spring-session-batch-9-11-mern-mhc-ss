@@ -18,7 +18,10 @@ export const formatDateTime = (value) =>
 
 // Mongo ObjectId 24 characters ka hota hai — table mein poora dikhana bekar hai,
 // aakhri 6 characters se admin ek order ko pehchan leta hai.
-export const shortId = (id) => (id ? `#${String(id).slice(-6).toUpperCase()}` : "—");
+// Order id ka wo hissa jo user ko dikhaya jata hai. 8 characters — customer
+// portal, notifications aur ye table sab ek jaisi id dikhayen, kyunke ab yehi
+// id search box mein daali jati hai (support call par bhi yehi padhi jayegi).
+export const shortId = (id) => (id ? `#${String(id).slice(-8).toUpperCase()}` : "—");
 
 export const ORDER_STATUSES = ["pending", "processing", "shipped", "delivered", "cancelled"];
 export const PAYMENT_STATUSES = ["pending", "paid", "failed", "refunded"];

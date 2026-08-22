@@ -52,15 +52,17 @@ export const routes = [
     element: <AuthLayout />,
     children: [
       // Email verification link par logged-in user bhi aa sakta hai, is liye
-      // ye GuestOnly ke bahar hai
+      // ye GuestOnly ke bahar hai. Reset link ke sath bhi yahi hota hai —
+      // logged-in bandah password badalna chahe to usay home par phenk dena
+      // matlab wo apna hi bheja hua link kabhi istemal na kar sakay
       { path: "verify-email", element: <VerifyEmail /> },
+      { path: "reset-password", element: <ResetPassword /> },
       {
         element: <GuestOnly />,
         children: [
           { path: "login", element: <Login /> },
           { path: "register", element: <Register /> },
           { path: "forgot-password", element: <ForgotPassword /> },
-          { path: "reset-password", element: <ResetPassword /> },
         ],
       },
     ],

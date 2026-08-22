@@ -40,6 +40,7 @@ const Category = require("../models/category.model");
 const Product = require("../models/product.model");
 const Order = require("../models/order.model");
 const Comment = require("../models/comment.model");
+const Notification = require("../models/notification.model");
 
 // ---------------------------------------------------------------------------
 // Config
@@ -135,13 +136,16 @@ const CATEGORY_TREE = [
 // Seed functions
 // ---------------------------------------------------------------------------
 async function clearCollections() {
-  console.log("Clearing existing Users, Categories, Products, Orders, Comments...");
+  console.log("Clearing existing Users, Categories, Products, Orders, Comments, Notifications...");
   await Promise.all([
     User.deleteMany({}),
     Category.deleteMany({}),
     Product.deleteMany({}),
     Order.deleteMany({}),
     Comment.deleteMany({}),
+    // Purani notifications un users/orders ko point karti hain jo ab hain hi
+    // nahi — inhe chhorna sirf confusion paida karta hai
+    Notification.deleteMany({}),
   ]);
 }
 

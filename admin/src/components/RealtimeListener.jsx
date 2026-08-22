@@ -6,7 +6,7 @@ import { socket } from "../socket";
 import { baseApi } from "../store/api/baseApi";
 import { pushNotification } from "../store/slices/notificationSlice";
 import { useGetMeQuery } from "../store/api/authApi";
-import { formatCurrency } from "../utils/format";
+import { formatCurrency, shortId } from "../utils/format";
 
 /**
  * Socket.IO listener — UI nahi rakhta. Events ko antd notification, bell ki
@@ -30,7 +30,7 @@ export default function RealtimeListener() {
     socket.connect();
 
     const onOrderNew = (payload) => {
-      const short = `#${String(payload.orderId).slice(-8).toUpperCase()}`;
+      const short = shortId(payload.orderId);
 
       dispatch(
         pushNotification({
@@ -55,7 +55,7 @@ export default function RealtimeListener() {
     };
 
     const onOrderPayment = (payload) => {
-      const short = `#${String(payload.orderId).slice(-8).toUpperCase()}`;
+      const short = shortId(payload.orderId);
       const paid = payload.paymentStatus === "paid";
 
       dispatch(

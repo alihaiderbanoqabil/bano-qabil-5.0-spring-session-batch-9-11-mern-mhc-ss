@@ -1476,7 +1476,7 @@
       "id": "b0911e06-d697-410e-ae6f-63c419d78562",
       "name": "Orders",
       "description": {
-        "content": "Customer orders. **Every** route requires a token.\n\n| Method | Path | Access |\n| --- | --- | --- |\n| `GET` | `/api/orders` | authenticated — admin sees all, customer sees own |\n| `GET` | `/api/orders/:id` | authenticated — ownership checked |\n| `POST` | `/api/orders` | authenticated |\n| `PATCH` | `/api/orders/:id` | authenticated — ownership checked |\n| `DELETE` | `/api/orders/:id` | authenticated |\n\n### Status values\n\n| Field | Allowed values | Default |\n| --- | --- | --- |\n| `status` | `pending`, `processing`, `shipped`, `delivered`, `cancelled` | `pending` |\n| `paymentMethod` | `card`, `cod`, `paypal` | `cod` |\n| `paymentStatus` | `pending`, `paid`, `failed`, `refunded` | `pending` |",
+        "content": "Customer orders. **Every** route requires a token.\n\n| Method | Path | Access |\n| --- | --- | --- |\n| `GET` | `/api/orders` | authenticated — admin sees all, customer sees own |\n| `GET` | `/api/orders/:id` | authenticated — ownership checked |\n| `POST` | `/api/orders` | authenticated |\n| `PATCH` | `/api/orders/:id` | authenticated — ownership checked |\n| `DELETE` | `/api/orders/:id` | authenticated |\n\n### Status values\n\n| Field | Allowed values | Default |\n| --- | --- | --- |\n| `status` | `pending`, `processing`, `shipped`, `delivered`, `cancelled` | `pending` |\n| `paymentMethod` | `card`, `cod`, `paypal` | `cod` |\n| `paymentStatus` | `pending`, `paid`, `failed`, `refunded` | `pending` |\n\n### Searching\n\n`?search=` works on both sides, but matches different things:\n\n| Caller | `search` matches |\n| --- | --- |\n| admin | customer **name**, customer **email**, or **order id** |\n| customer | **order id** only — every order in the list is already theirs |\n\n**Order id.** Both the full 24-character id and the short form the UI shows (`#77EA296E` — the last 8 characters) work, with or without the `#`, in either case. A full id is matched directly against `_id` (indexed). A fragment is matched with `$expr` + `$toString`, which cannot use an index — fine at this scale, but it is a collection scan, so do not point it at a very large orders collection without adding a stored short-id field.\n\n**Customer name / email.** `name` lives on `User`, not on `Order`, and MongoDB cannot regex across collections in a plain `find`. The controller does it in two steps: find the matching users, then filter orders by `user: { $in: [...] }`.\n\nThe two are OR-ed together for admins, so one box covers both. A customer's search is still AND-ed with their own `user` filter — searching another customer's order id returns nothing, never someone else's order. If nothing matches, the result is an empty list — never the unfiltered one.",
         "type": "text/plain"
       },
       "item": [
@@ -2097,6 +2097,101 @@
       ]
     },
     {
+      "id": "8380987b-8b1f-49db-95ef-cbd04fae37f5",
+      "name": "Notifications",
+      "description": {
+        "content": "Persistent notifications for the logged-in customer, backing the storefront's bell.\n\n| Method | Path | Access |\n| --- | --- | --- |\n| `GET` | `/api/notifications` | 🔒 authenticated |\n| `PATCH` | `/api/notifications/:id/read` | 🔒 authenticated |\n| `PATCH` | `/api/notifications/read-all` | 🔒 authenticated |\n\n### Why they are stored at all\n\nSocket.IO only reaches clients that are connected *right now*. A customer who was offline when a product was added would never learn about it, and every notification would vanish on refresh. So each notification is written to MongoDB first and emitted second — the socket is the live copy, the database is the record.\n\n### One document, many readers\n\nA broadcast to 10,000 customers must not write 10,000 rows:\n\n| `user` | Meaning | Read state |\n| --- | --- | --- |\n| `null` | broadcast — every customer sees it (`product:new`) | `readBy` grows as people read it |\n| an ObjectId | targeted (`order:status`, `order:payment`) | `readBy` holds at most that one id |\n\n`GET` returns `$or: [{ user: me }, { user: null }]`, newest first, and computes a `read` boolean per row — `readBy` itself is never sent to the client (it holds other users' ids).\n\nGuests get live toasts but no records: notifications belong to a user.",
+        "type": "text/plain"
+      },
+      "event": [],
+      "item": [
+        {
+          "id": "bc6bbe54-5484-41c3-a862-12ff26a79710",
+          "name": "Get Notifications",
+          "response": [],
+          "event": [],
+          "request": {
+            "description": {
+              "content": "Your notifications plus broadcasts, newest first, with an unread count so the bell badge needs only this one request.\n\n`🔒 Authenticated`\n\n### Response — 200 OK\n```json\n{\n  \"message\": \"Notifications fetched successfully.\",\n  \"data\": [\n    {\n      \"_id\": \"66f9...\",\n      \"type\": \"order:status\",\n      \"title\": \"Order #871E0D90 has shipped\",\n      \"body\": \"Order total 24999\",\n      \"link\": \"/orders/66f8...\",\n      \"read\": false,\n      \"createdAt\": \"2026-08-23T09:12:00.000Z\"\n    }\n  ],\n  \"unread\": 1\n}\n```\n\n`?limit=` caps the list (default 20, max 50). `type` is one of `product:new`, `order:status`, `order:payment` — the storefront picks the icon from it, and `link` is where clicking it goes.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "notifications"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [
+                {
+                  "description": {
+                    "content": "Default 20, max 50.",
+                    "type": "text/plain"
+                  },
+                  "key": "limit",
+                  "value": "20"
+                }
+              ],
+              "variable": []
+            },
+            "method": "GET"
+          }
+        },
+        {
+          "id": "d9f88fb2-2206-425f-a534-eaa04b20b7b0",
+          "name": "Mark One As Read",
+          "response": [],
+          "event": [],
+          "request": {
+            "description": {
+              "content": "Adds your id to that notification's `readBy`.\n\n`🔒 Authenticated`\n\nUses `$addToSet`, so calling it twice is harmless — no duplicate ids, no error. Marking a **broadcast** read only affects you; everyone else's unread count is untouched.\n\n| Status | Cause |\n| --- | --- |\n| `404` | No such notification, or it belongs to another user |\n| `400` | Malformed ObjectId |\n\nThe storefront applies this optimistically and rolls back if the request fails, so the badge drops the moment you click.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "notifications",
+                "{{notification_id}}",
+                "read"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "PATCH"
+          }
+        },
+        {
+          "id": "48892879-bd84-4feb-bca0-fff8d06f418c",
+          "name": "Mark All As Read",
+          "response": [],
+          "event": [],
+          "request": {
+            "description": {
+              "content": "Marks everything you can see as read.\n\n`🔒 Authenticated`\n\n```json\n{ \"message\": \"All notifications marked as read\", \"modifiedCount\": 3 }\n```\n\nThe update filters on `readBy: { $ne: <you> }`, so it only writes documents that actually change — calling it twice returns `modifiedCount: 0`.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "notifications",
+                "read-all"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "PATCH"
+          }
+        }
+      ]
+    },
+    {
       "id": "64042ea4-96f2-4ae8-b800-c07e65338210",
       "name": "Stats",
       "description": {
@@ -2166,7 +2261,7 @@
           "name": "Payment Config",
           "request": {
             "description": {
-              "content": "Tells the frontend whether card payments can be offered.\n\n`🌍 Public`\n\n```json\n{ \"cardPaymentsEnabled\": true, \"currency\": \"pkr\" }\n```\n\n`cardPaymentsEnabled` is simply \"is `STRIPE_SECRET_KEY` set on the server\". The storefront greys out its Card option when this is `false`, instead of letting a customer pick a method that cannot work.",
+              "content": "Tells the frontend whether card payments can be offered, and hands it the Stripe publishable key.\n\n`🌍 Public`\n\n```json\n{ \"cardPaymentsEnabled\": true, \"publishableKey\": \"pk_test_...\", \"currency\": \"pkr\" }\n```\n\n`cardPaymentsEnabled` is simply \"is `STRIPE_SECRET_KEY` set on the server\". The storefront greys out its Card option when this is `false`.\n\nThe publishable key is served from here rather than baked into the frontend's own `.env`: both keys then live in one place (`backend/.env`), and rotating them needs no frontend rebuild. It is public by design — the secret key never leaves the server.",
               "type": "text/plain"
             },
             "url": {
@@ -2185,6 +2280,66 @@
           },
           "response": [],
           "event": []
+        },
+        {
+          "id": "39fba516-135b-4308-9d5c-d37c45e123b2",
+          "name": "Create Payment Intent",
+          "response": [],
+          "event": [],
+          "request": {
+            "description": {
+              "content": "Creates (or re-uses) a Stripe PaymentIntent for an order and returns its `clientSecret`. This is what the storefront's in-page card form uses.\n\n`🔒 Authenticated` — the order's owner, or an admin.\n\n### Body\n| Field | Type | Required |\n| --- | --- | --- |\n| `orderId` | ObjectId | ✅ |\n\n### Response — 200 OK\n```json\n{\n  \"message\": \"Payment intent created\",\n  \"clientSecret\": \"pi_3ABC..._secret_XYZ\",\n  \"amount\": 2499900,\n  \"currency\": \"pkr\"\n}\n```\n\n`amount` is in the smallest unit (paisa) and is computed from the **stored order** — the client cannot influence what is charged.\n\n**Re-used, not recreated.** If the order already has an intent that is still payable, it is retrieved (and its amount updated if needed) instead of creating a new one, so refreshing the page does not litter the Stripe dashboard with abandoned intents.\n\n| Status | Cause |\n| --- | --- |\n| `400` | `orderId is required`, `This order is already paid`, `This order was cancelled` |\n| `403` | Someone else's order |\n| `409` | The order's existing intent is already `succeeded`/`processing` — the payment is in flight and the webhook has not landed. Creating another intent here could double-charge, so it is refused |\n| `404` | No such order |\n| `502` | Stripe rejected the call — the real reason is in the server log |\n| `503` | `STRIPE_SECRET_KEY` is not set |\n\nHand `clientSecret` to `<Elements>` on the client; the order is still only marked paid by the webhook.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "payments",
+                "payment-intent"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"{{order_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "id": "4758044c-d69c-4b4f-9146-c5112cc25bee",
+          "name": "Sync Payment Status",
+          "response": [],
+          "event": [],
+          "request": {
+            "description": {
+              "content": "Asks Stripe directly whether the order's PaymentIntent succeeded, and updates the order to match.\n\n`🔒 Authenticated` — the order's owner, or an admin.\n\n### Why this exists\n\nThe webhook is the source of truth, but it needs `stripe listen` locally and can lag in production — leaving a customer who just paid staring at `pending`. The storefront calls this immediately after `confirmPayment()` succeeds, so the order flips to paid at once.\n\nIt is **not** a way for the client to declare a payment done: the only thing the client supplies is the order id. The server fetches the PaymentIntent from Stripe and updates the order only when\n\n- `intent.status === \"succeeded\"`, **and**\n- `intent.amount_received` equals the order total in the smallest currency unit\n\nBoth this route and the webhook call the same `markOrderPaid()` helper, so they can never drift apart, and both are idempotent — an order that is already paid emits no second notification.\n\n### Responses\n\n```json\n{ \"message\": \"Payment confirmed\", \"order\": { \"status\": \"processing\", \"paymentStatus\": \"paid\" }, \"updated\": true }\n```\n\n| `message` | Meaning |\n| --- | --- |\n| `Payment confirmed` | Stripe said succeeded and the amount matched — order updated |\n| `Payment already confirmed` | The webhook got there first; nothing to do |\n| `Payment is still processing` | Stripe has not settled it yet |\n| `Payment has not completed yet` | Any other intent status (returned with `paymentIntentStatus`) |\n\n| Status | Cause |\n| --- | --- |\n| `400` | No payment has been started for this order |\n| `403` | Someone else's order |\n| `404` | No such order |\n| `502` | Stripe lookup failed — real reason in the server log |\n| `503` | `STRIPE_SECRET_KEY` is not set |",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "payments",
+                "sync",
+                "{{order_id}}"
+              ],
+              "host": [
+                "{{base_url}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "POST"
+          }
         },
         {
           "id": "7771fa3e-212c-44a6-aff8-69933bf580df",
@@ -2344,7 +2499,7 @@
     "name": "bano-qabil-backend",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "description": {
-      "content": "# Bano Qabil 5.0 — E-Commerce Backend API\n\nREST API for the MERN e-commerce project (Express 5 + Mongoose + JWT).\n\n---\n\n## Base URL\n\nAll requests use the `{{base_url}}` environment variable.\n\n| Environment | Value |\n| --- | --- |\n| Local | `http://localhost:5000` |\n\nThe port comes from `PORT` in `backend/.env` (defaults to `3000` if unset).\n\n## Authentication\n\nThe API uses a **JWT in an httpOnly cookie**.\n\n1. Call **Auth → Login**. The response body contains **no token** — the JWT arrives as `Set-Cookie: token=<jwt>; HttpOnly`. Postman keeps it in its cookie jar and replays it on every later request.\n2. Call **Auth → Logout** to clear it.\n\n`authenticate` reads the token from the `token` cookie first, and falls back to an `Authorization: Bearer <jwt>` header — so mobile apps, server-to-server calls and the collection-level bearer auth all keep working.\n\nToken payload: `{ id, email, role }` · Expiry: **7 days** · Signed with `JWT_SECRET`.\n\nWhy a cookie: `httpOnly` means page JavaScript cannot read the token, so an XSS bug cannot walk off with the session the way it can with `localStorage`. The trade-off is CSRF exposure — mitigated here by `SameSite=Lax` (`None` + `secure` in production) and a CORS allow-list of exact origins.\n\n## Query engine on list routes\n\n`GET /api/products`, `/api/orders`, `/api/comments`, `/api/users` and `/api/categories?flat=true` all run through one shared helper, so they take the same parameters:\n\n| Param | Example | Effect |\n| --- | --- | --- |\n| `page` / `limit` | `?page=2&limit=20` | Pagination — default `10`, max `100` |\n| `sort` | `?sort=-createdAt,name` | Multi-field sort, `-` = descending |\n| `fields` | `?fields=name,price` | Include, or `?fields=-description` to exclude |\n| `search` | `?search=laptop` | Case-insensitive regex over that route's search fields |\n| `<field>` | `?role=admin` | Equality filter |\n| `<field>[gte\\|gt\\|lte\\|lt\\|ne]` | `?price[gte]=100` | Comparison |\n| `<field>[in\\|nin]` | `?status[in]=pending,paid` | Comma-separated list |\n\nEvery one of them answers with the same envelope:\n\n```json\n{ \"message\": \"...\", \"data\": [ ... ], \"pagination\": { \"total\": 42, \"page\": 1, \"limit\": 10, \"totalPages\": 5, \"hasNextPage\": true, \"hasPrevPage\": false } }\n```\n\n## Roles\n\n| Role | Capabilities |\n| --- | --- |\n| `customer` | Own profile, own orders, read products & categories |\n| `admin` | Everything, plus user management and product/category writes |\n\n## Standard error responses\n\n| Status | Meaning |\n| --- | --- |\n| `400` | Validation failure / duplicate record |\n| `401` | Missing, malformed or expired token |\n| `403` | Authenticated but role or ownership check failed |\n| `404` | Resource not found |\n| `429` | Rate limit exceeded |\n| `500` | Unhandled server error |\n\nError body is always: `{ \"message\": \"...\" }`\n\n## Rate limiting\n\n**100 requests per 15 minutes per IP**, applied globally. Responses include the standard `RateLimit-*` headers. Exceeding it returns `429` with the plain-text body `Too many requests from this IP, please try again later.`\n\n## File uploads\n\nImage uploads use `multipart/form-data` through Multer.\n\n- Images only (`image/*` mimetype), max **5 MB** per file\n- Saved to `backend/uploads/`, stored in Mongo as a relative path such as `/uploads/68f3...c1.png`\n- Served publicly at `{{base_url}}/uploads/<filename>`\n\n## Comments & ratings\n\n`Comment` links a **product** and a **user**, and refers to itself through `parentComment` for one-level-deep replies. Every create / update / delete recalculates the product's `averageRating` and `numReviews`, so product listings can sort and filter on rating without touching the comments collection.\n\nSee the **Comments** folder for the full contract.\n\n## Realtime events (Socket.IO)\n\nThe API also runs a Socket.IO server on the **same port**. Clients connect with credentials (`withCredentials: true`) and the server reads the same auth cookie from the handshake, then puts the socket into rooms:\n\n| Room | Who | Events |\n| --- | --- | --- |\n| `everyone` | every client, guests included | `product:new` |\n| `user:<id>` | one customer | `order:status`, `order:payment` |\n| `admins` | all logged-in admins | `order:new`, `order:payment` |\n\nEmitted from `product.controller` (create), `order.controller` (create, status change) and `payment.controller` (webhook). A status change only fires when the status actually changed — editing an address does not notify the customer.\n\n## Quick start\n\n1. Select the **bano-qabil-local** environment (top-right of Postman).\n2. Start the server: `npm run dev` inside `backend/`.\n3. Run **Auth → Register (Admin)**, then **Auth → Login** — the token is captured automatically.\n4. Everything else is ready to send.\n\n## Error contract\n\nEvery error response — including 404s for unknown routes — is produced by one central handler and always has this shape:\n\n```json\n{ \"message\": \"...\" }\n```\n\n| Cause | Status |\n| --- | --- |\n| Malformed ObjectId (`CastError`) | `400` — `Invalid _id: <value>` |\n| Schema validation failure | `400` — all failing fields, comma-separated |\n| Duplicate unique field | `400` — `<field> already exists` |\n| Malformed JSON body | `400` — `Invalid JSON body` |\n| Missing/invalid/expired JWT | `401` |\n| Role or ownership check | `403` |\n| Unknown route | `404` — `Route not found - <METHOD> <path>` |\n| Unhandled bug | `500` — generic message in production |",
+      "content": "# Bano Qabil 5.0 — E-Commerce Backend API\n\nREST API for the MERN e-commerce project (Express 5 + Mongoose + JWT).\n\n---\n\n## Base URL\n\nAll requests use the `{{base_url}}` environment variable.\n\n| Environment | Value |\n| --- | --- |\n| Local | `http://localhost:5000` |\n\nThe port comes from `PORT` in `backend/.env` (defaults to `3000` if unset).\n\n## Authentication\n\nThe API uses a **JWT in an httpOnly cookie**.\n\n1. Call **Auth → Login**. The response body contains **no token** — the JWT arrives as `Set-Cookie: token=<jwt>; HttpOnly`. Postman keeps it in its cookie jar and replays it on every later request.\n2. Call **Auth → Logout** to clear it.\n\n`authenticate` reads the token from the `token` cookie first, and falls back to an `Authorization: Bearer <jwt>` header — so mobile apps, server-to-server calls and the collection-level bearer auth all keep working.\n\nToken payload: `{ id, email, role }` · Expiry: **7 days** · Signed with `JWT_SECRET`.\n\nWhy a cookie: `httpOnly` means page JavaScript cannot read the token, so an XSS bug cannot walk off with the session the way it can with `localStorage`. The trade-off is CSRF exposure — mitigated here by `SameSite=Lax` (`None` + `secure` in production) and a CORS allow-list of exact origins.\n\n## Query engine on list routes\n\n`GET /api/products`, `/api/orders`, `/api/comments`, `/api/users` and `/api/categories?flat=true` all run through one shared helper, so they take the same parameters:\n\n| Param | Example | Effect |\n| --- | --- | --- |\n| `page` / `limit` | `?page=2&limit=20` | Pagination — default `10`, max `100` |\n| `pagination` | `?pagination=false` | Return the **whole** result set, no paging. The response shape does not change: `pagination.paginated` is `false`, and `page`/`limit` describe the full set |\n| `sort` | `?sort=-createdAt,name` | Multi-field sort, `-` = descending |\n| `fields` | `?fields=name,price` | Include, or `?fields=-description` to exclude |\n| `search` | `?search=laptop` | Case-insensitive regex over that route's search fields |\n| `<field>` | `?role=admin` | Equality filter |\n| `<field>[gte\\|gt\\|lte\\|lt\\|ne]` | `?price[gte]=100` | Comparison |\n| `<field>[in\\|nin]` | `?status[in]=pending,paid` | Comma-separated list |\n\nEvery one of them answers with the same envelope:\n\n```json\n{ \"message\": \"...\", \"data\": [ ... ], \"pagination\": { \"total\": 42, \"page\": 1, \"limit\": 10, \"totalPages\": 5, \"hasNextPage\": true, \"hasPrevPage\": false } }\n```\n\n## Roles\n\n| Role | Capabilities |\n| --- | --- |\n| `customer` | Own profile, own orders, read products & categories |\n| `admin` | Everything, plus user management and product/category writes |\n\n## Standard error responses\n\n| Status | Meaning |\n| --- | --- |\n| `400` | Validation failure / duplicate record |\n| `401` | Missing, malformed or expired token |\n| `403` | Authenticated but role or ownership check failed |\n| `404` | Resource not found |\n| `429` | Rate limit exceeded |\n| `500` | Unhandled server error |\n\nError body is always: `{ \"message\": \"...\" }`\n\n## Rate limiting\n\n**100 requests per 15 minutes per IP**, applied globally. Responses include the standard `RateLimit-*` headers. Exceeding it returns `429` with the plain-text body `Too many requests from this IP, please try again later.`\n\n## File uploads\n\nImage uploads use `multipart/form-data` through Multer.\n\n- Images only (`image/*` mimetype), max **5 MB** per file\n- Saved to `backend/uploads/`, stored in Mongo as a relative path such as `/uploads/68f3...c1.png`\n- Served publicly at `{{base_url}}/uploads/<filename>`\n\n## Comments & ratings\n\n`Comment` links a **product** and a **user**, and refers to itself through `parentComment` for one-level-deep replies. Every create / update / delete recalculates the product's `averageRating` and `numReviews`, so product listings can sort and filter on rating without touching the comments collection.\n\nSee the **Comments** folder for the full contract.\n\n## Realtime events (Socket.IO)\n\nThe API also runs a Socket.IO server on the **same port**. Clients connect with credentials (`withCredentials: true`) and the server reads the same auth cookie from the handshake, then puts the socket into rooms:\n\n| Room | Who | Events |\n| --- | --- | --- |\n| `everyone` | every client, guests included | `product:new` |\n| `user:<id>` | one customer | `order:status`, `order:payment` |\n| `admins` | all logged-in admins | `order:new`, `order:payment` |\n\nEmitted from `product.controller` (create), `order.controller` (create, status change) and `payment.controller` (webhook). A status change only fires when the status actually changed — editing an address does not notify the customer.\n\n## Quick start\n\n1. Select the **bano-qabil-local** environment (top-right of Postman).\n2. Start the server: `npm run dev` inside `backend/`.\n3. Run **Auth → Register (Admin)**, then **Auth → Login** — the token is captured automatically.\n4. Everything else is ready to send.\n\n## Error contract\n\nEvery error response — including 404s for unknown routes — is produced by one central handler and always has this shape:\n\n```json\n{ \"message\": \"...\" }\n```\n\n| Cause | Status |\n| --- | --- |\n| Malformed ObjectId (`CastError`) | `400` — `Invalid _id: <value>` |\n| Schema validation failure | `400` — all failing fields, comma-separated |\n| Duplicate unique field | `400` — `<field> already exists` |\n| Malformed JSON body | `400` — `Invalid JSON body` |\n| Missing/invalid/expired JWT | `401` |\n| Role or ownership check | `403` |\n| Unknown route | `404` — `Route not found - <METHOD> <path>` |\n| Unhandled bug | `500` — generic message in production |",
       "type": "text/plain"
     }
   }

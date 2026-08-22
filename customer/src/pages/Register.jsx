@@ -80,14 +80,14 @@ export default function Register() {
           label="Phone"
           placeholder="03001234567"
           autoComplete="tel"
-          hint="Optional"
+          // hint="Optional"
           error={errors.phone}
           {...register("phone", rules.phone)}
         />
         <Field
           label="Password"
           type="password"
-          placeholder="At least 6 characters"
+          placeholder="At least 8 characters"
           autoComplete="new-password"
           error={errors.password}
           {...register("password", rules.password)}
@@ -95,6 +95,7 @@ export default function Register() {
         <Field
           label="Confirm password"
           type="password"
+          placeholder="Re-enter your password"
           autoComplete="new-password"
           error={errors.confirmPassword}
           {...register("confirmPassword", rules.confirmPassword(getValues))}

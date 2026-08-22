@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Alert, App, Button, Card, Flex, Popconfirm, Select, Space, Table, Tag, Typography } from "antd";
-import { DeleteOutlined, EyeOutlined } from "@ant-design/icons";
+import { Alert, App, Button, Card, Flex, Input, Popconfirm, Select, Space, Table, Tag, Typography } from "antd";
+import { DeleteOutlined, EyeOutlined, SearchOutlined } from "@ant-design/icons";
 import { useDeleteOrderMutation, useGetOrdersQuery, useUpdateOrderMutation } from "../store/api/orderApi";
 import { getApiError } from "../store/api/baseApi";
 import {
@@ -12,6 +12,7 @@ import {
   shortId,
   toOptions,
 } from "../utils/format";
+import useDebouncedValue from "../utils/useDebouncedValue";
 import OrderDetailDrawer from "../components/OrderDetailDrawer";
 
 const DEFAULT_SORT = "-createdAt";
@@ -23,9 +24,13 @@ export default function Orders() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [sort, setSort] = useState(DEFAULT_SORT);
+  const [searchText, setSearchText] = useState("");
   const [status, setStatus] = useState();
   const [paymentStatus, setPaymentStatus] = useState();
   const [openOrderId, setOpenOrderId] = useState(null);
+
+  // Products page wala hi tareeqa — har keystroke par request na jaye
+  const search = useDebouncedValue(searchText, 450);
 
   // Dashboard "recent orders" se /orders?order=<id> link aata hai — wo order
   // seedha drawer mein khol dete hain.
@@ -34,18 +39,28 @@ export default function Orders() {
     if (linked) setOpenOrderId(linked);
   }, [searchParams]);
 
+  // Filter ya search badalne par page 1 par wapis — warna page 7 par khali
+  // table milta hai (search ke baad aksar 1-2 hi orders bachti hain)
   useEffect(() => {
     setPage(1);
-  }, [status, paymentStatus]);
+  }, [search, status, paymentStatus]);
 
   const params = useMemo(() => {
     const next = { page, limit, sort };
+    // Backend `search` ko baqi filters se alag handle karta hai: naam/email
+    // se users dhoondta hai, phir un ki ids par orders filter karta hai. Is liye
+    // status/paymentStatus ke sath mila kar bhejna bilkul theek hai.
+    if (search.trim()) next.search = search.trim();
     if (status) next.status = status;
     if (paymentStatus) next.paymentStatus = paymentStatus;
     return next;
-  }, [page, limit, sort, status, paymentStatus]);
+  }, [page, limit, sort, search, status, paymentStatus]);
 
-  const { data, isFetching, error } = useGetOrdersQuery(params);
+  // Orders sab se volatile list hai — customers order karte rehte hain. Tab par
+  // wapis aate hi taaza list mangwa lete hain. (Dashboard ke ilawa sirf yahan
+  // refetchOnFocus lagaya hai; api-wide lagate to har tab switch par products,
+  // categories, users sab dobara chal parte.)
+  const { data, isFetching, error } = useGetOrdersQuery(params, { refetchOnFocus: true });
   const [updateOrder, { isLoading: updating }] = useUpdateOrderMutation();
   const [deleteOrder, { isLoading: deleting }] = useDeleteOrderMutation();
 
@@ -188,6 +203,15 @@ export default function Orders() {
 
       <Card size="small">
         <Flex gap={12} wrap align="center">
+          <Input
+            allowClear
+            style={{ width: 280 }}
+            prefix={<SearchOutlined />}
+            placeholder="Search by customer name, email or order ID"
+            value={searchText}
+            onChange={(event) => setSearchText(event.target.value)}
+            onPressEnter={(event) => setSearchText(event.target.value)}
+          />
           <Select
             allowClear
             style={{ width: 180 }}
@@ -206,6 +230,7 @@ export default function Orders() {
           />
           <Button
             onClick={() => {
+              setSearchText("");
               setStatus(undefined);
               setPaymentStatus(undefined);
               setSort(DEFAULT_SORT);
@@ -214,7 +239,9 @@ export default function Orders() {
             Clear filters
           </Button>
           <Typography.Text type="secondary">
-            Orders have no text search on the backend — filter by status or sort by date/total instead.
+            Search matches the customer's name or email, or an order ID — the short{" "}
+            <Typography.Text code>#ABC12345</Typography.Text> shown in the table works, and so does a
+            full id.
           </Typography.Text>
         </Flex>
       </Card>

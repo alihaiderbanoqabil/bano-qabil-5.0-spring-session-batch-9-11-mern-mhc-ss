@@ -61,6 +61,14 @@ const orderSchema = new mongoose.Schema(
       enum: ["pending", "paid", "failed", "refunded"],
       default: "pending",
     },
+    // Stripe PaymentIntent ki id. Isay rakhne se ek order ke liye baar baar
+    // naye intents nahi bantey — refresh ya wapis aane par wohi intent
+    // dobara use ho jata hai.
+    paymentIntentId: {
+      type: String,
+      default: null,
+      select: false, // client ko is ki zarorat nahi
+    },
   },
   { timestamps: true }
 );
