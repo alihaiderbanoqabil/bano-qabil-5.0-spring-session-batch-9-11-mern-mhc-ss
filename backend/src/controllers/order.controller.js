@@ -162,7 +162,7 @@ const createOrder = async (req, res) => {
     );
 
     // Admin dashboard ko realtime nayi order dikha dete hain
-    notifyNewOrder(order);
+    await notifyNewOrder(order);
 
     return res.status(201).json({ message: "Order created successfully", order });
 };

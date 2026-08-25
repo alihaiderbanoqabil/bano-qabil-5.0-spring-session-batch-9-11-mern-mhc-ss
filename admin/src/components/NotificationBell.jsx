@@ -1,17 +1,22 @@
 import { Link } from "react-router-dom";
-import { useDispatch, useSelector } from "react-redux";
-import { Badge, Button, Dropdown, Empty, List, Typography } from "antd";
-import { BellOutlined, ShoppingCartOutlined, DollarOutlined } from "@ant-design/icons";
+import { Badge, Button, Dropdown, Empty, List, Tooltip, Typography } from "antd";
 import {
-  markAllRead,
-  clearNotifications,
-  selectNotifications,
-  selectUnreadCount,
-} from "../store/slices/notificationSlice";
+  BellOutlined,
+  ShoppingCartOutlined,
+  DollarOutlined,
+  CheckOutlined,
+  CheckCircleOutlined,
+} from "@ant-design/icons";
+import {
+  useGetNotificationsQuery,
+  useMarkAllNotificationsReadMutation,
+  useMarkNotificationReadMutation,
+} from "../store/api/notificationApi";
+import { useGetMeQuery } from "../store/api/authApi";
 
 const ICONS = {
-  order: <ShoppingCartOutlined style={{ color: "#4f46e5" }} />,
-  payment: <DollarOutlined style={{ color: "#16a34a" }} />,
+  "order:new": <ShoppingCartOutlined style={{ color: "#4f46e5" }} />,
+  "order:payment": <DollarOutlined style={{ color: "#16a34a" }} />,
 };
 
 const timeAgo = (iso) => {
@@ -23,12 +28,26 @@ const timeAgo = (iso) => {
 };
 
 export default function NotificationBell() {
-  const dispatch = useDispatch();
-  const items = useSelector(selectNotifications);
-  const unread = useSelector(selectUnreadCount);
+  const { data: user, isError } = useGetMeQuery();
+  const isAdmin = Boolean(user) && !isError && user.role === "admin";
+
+  // Login screen par bell ka koi matlab nahi — query hi skip kar dete hain
+  const { data } = useGetNotificationsQuery(undefined, { skip: !isAdmin });
+  const [markRead] = useMarkNotificationReadMutation();
+  const [markAllRead] = useMarkAllNotificationsReadMutation();
+
+  const items = data?.data || [];
+  const unread = data?.unread || 0;
 
   const panel = (
-    <div style={{ width: 340, background: "#fff", borderRadius: 8, boxShadow: "0 6px 24px rgba(0,0,0,0.12)" }}>
+    <div
+      style={{
+        width: 360,
+        background: "#fff",
+        borderRadius: 8,
+        boxShadow: "0 6px 24px rgba(0,0,0,0.12)",
+      }}
+    >
       <div
         style={{
           display: "flex",
@@ -38,10 +57,18 @@ export default function NotificationBell() {
           borderBottom: "1px solid #f0f0f0",
         }}
       >
-        <Typography.Text strong>Notifications</Typography.Text>
-        {items.length ? (
-          <Button type="link" size="small" danger onClick={() => dispatch(clearNotifications())}>
-            Clear all
+        <Typography.Text strong>
+          Notifications
+          {unread ? (
+            <Typography.Text type="secondary" style={{ fontWeight: 400 }}>
+              {" "}
+              ({unread} new)
+            </Typography.Text>
+          ) : null}
+        </Typography.Text>
+        {unread ? (
+          <Button type="link" size="small" icon={<CheckCircleOutlined />} onClick={() => markAllRead()}>
+            Mark all as read
           </Button>
         ) : null}
       </div>
@@ -49,26 +76,45 @@ export default function NotificationBell() {
       {items.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="New orders and payments appear here instantly"
+          description="New orders and payments appear here"
           style={{ padding: "24px 16px" }}
         />
       ) : (
         <List
           size="small"
-          style={{ maxHeight: 320, overflowY: "auto" }}
+          style={{ maxHeight: 340, overflowY: "auto" }}
           dataSource={items}
           renderItem={(item) => (
-            <List.Item style={{ padding: "10px 16px" }}>
+            <List.Item
+              // Unread ko halka background — read se farq saaf rahe
+              style={{ padding: "10px 16px", background: item.read ? undefined : "#f5f3ff" }}
+              actions={
+                item.read
+                  ? undefined
+                  : [
+                      <Tooltip title="Mark as read" key="read">
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<CheckOutlined />}
+                          aria-label="Mark as read"
+                          onClick={() => markRead(item._id)}
+                        />
+                      </Tooltip>,
+                    ]
+              }
+            >
               <List.Item.Meta
-                avatar={ICONS[item.kind] || <BellOutlined />}
+                avatar={ICONS[item.type] || <BellOutlined />}
                 title={
-                  item.link ? (
-                    <Link to={item.link} style={{ fontSize: 13 }}>
-                      {item.title}
-                    </Link>
-                  ) : (
-                    <span style={{ fontSize: 13 }}>{item.title}</span>
-                  )
+                  <Link
+                    to={item.link || "#"}
+                    // Kholna hi "dekh li" hai
+                    onClick={() => !item.read && markRead(item._id)}
+                    style={{ fontSize: 13, fontWeight: item.read ? 400 : 600 }}
+                  >
+                    {item.title}
+                  </Link>
                 }
                 description={
                   <span style={{ fontSize: 12 }}>
@@ -84,16 +130,14 @@ export default function NotificationBell() {
   );
 
   return (
-    <Dropdown
-      popupRender={() => panel}
-      trigger={["click"]}
-      placement="bottomRight"
-      onOpenChange={(open) => {
-        if (open && unread) dispatch(markAllRead());
-      }}
-    >
+    <Dropdown popupRender={() => panel} trigger={["click"]} placement="bottomRight">
       <Badge count={unread} size="small" offset={[-4, 4]}>
-        <Button type="text" icon={<BellOutlined style={{ fontSize: 18 }} />} style={{ height: 44 }} />
+        <Button
+          type="text"
+          icon={<BellOutlined style={{ fontSize: 18 }} />}
+          style={{ height: 44 }}
+          aria-label={unread ? `${unread} unread notifications` : "Notifications"}
+        />
       </Badge>
     </Dropdown>
   );

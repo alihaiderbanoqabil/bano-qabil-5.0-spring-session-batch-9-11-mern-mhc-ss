@@ -39,6 +39,7 @@ const STATUS_TEXT = {
 const notifyNewProduct = async (product) => {
     const notification = await Notification.create({
         user: null, // broadcast
+        audience: "all", // customers — product admin ne khud banaya hai
         type: "product:new",
         title: "New product added",
         body: product.name,
@@ -100,50 +101,94 @@ const notifyOrderStatus = async ({ order, previousStatus }) => {
  */
 const notifyPaymentUpdate = async ({ order }) => {
     const paid = order.paymentStatus === "paid";
+    const short = shortOrderId(order._id);
+    const amount = formatAmount(order.totalAmount);
 
-    const notification = await Notification.create({
-        user: order.user,
-        type: "order:payment",
-        title: paid
-            ? `Payment received for ${shortOrderId(order._id)}`
-            : `Payment ${order.paymentStatus} for ${shortOrderId(order._id)}`,
-        body: `Order total ${formatAmount(order.totalAmount)}`,
-        link: `/orders/${order._id}`,
-    });
+    // Do alag records: customer ka apna, aur admins ka broadcast. Titles aur
+    // links dono ke liye alag hain (customer /orders/:id par jata hai, admin
+    // apne table ke drawer par), is liye ek record se kaam nahi chalta.
+    const [customerNotification, adminNotification] = await Promise.all([
+        Notification.create({
+            user: order.user,
+            type: "order:payment",
+            title: paid ? `Payment received for ${short}` : `Payment ${order.paymentStatus} for ${short}`,
+            body: `Order total ${amount}`,
+            link: `/orders/${order._id}`,
+        }),
+        Notification.create({
+            user: null,
+            audience: "admins",
+            type: "order:payment",
+            title: paid ? `Payment received ${short}` : `Payment ${order.paymentStatus} ${short}`,
+            body: amount,
+            link: `/orders?order=${order._id}`,
+        }),
+    ]);
 
-    const payload = {
-        _id: notification._id,
+    const shared = {
         type: "order:payment",
-        title: notification.title,
-        body: notification.body,
-        link: notification.link,
         read: false,
-        createdAt: notification.createdAt,
         orderId: order._id,
         paymentStatus: order.paymentStatus,
         status: order.status,
         totalAmount: order.totalAmount,
     };
 
-    emitToUser(order.user, "order:payment", payload);
-    emitToAdmins("order:payment", payload);
+    emitToUser(order.user, "order:payment", {
+        ...shared,
+        _id: customerNotification._id,
+        title: customerNotification.title,
+        body: customerNotification.body,
+        link: customerNotification.link,
+        createdAt: customerNotification.createdAt,
+    });
 
-    return notification;
+    emitToAdmins("order:payment", {
+        ...shared,
+        _id: adminNotification._id,
+        title: adminNotification.title,
+        body: adminNotification.body,
+        link: adminNotification.link,
+        createdAt: adminNotification.createdAt,
+    });
+
+    return customerNotification;
 };
 
 /**
- * Nayi order — sirf admins ke liye, aur sirf live (koi DB record nahi:
- * admin portal ka dashboard aur orders table khud hi socket par refresh ho
- * jate hain, un ke liye alag inbox ki zarorat nahi).
+ * Nayi order — sab admins ke liye (broadcast + record).
+ *
+ * Record isi liye zaroori hai: admin raat ko portal band kar ke jata hai, aur
+ * subah usay wo orders bhi dikhni chahiyen jo us ke na hone mein aayin. Socket
+ * sirf un tak pohanchata hai jo us waqt juday hue thay.
  */
-const notifyNewOrder = (order) => {
-    emitToAdmins("order:new", {
+const notifyNewOrder = async (order) => {
+    const itemCount = order.items?.length || 0;
+
+    const notification = await Notification.create({
+        user: null,
+        audience: "admins",
         type: "order:new",
+        title: `New order ${shortOrderId(order._id)}`,
+        body: `${itemCount} item${itemCount === 1 ? "" : "s"} · ${formatAmount(order.totalAmount)}`,
+        // Admin portal is link par order ka drawer khol deta hai
+        link: `/orders?order=${order._id}`,
+    });
+
+    emitToAdmins("order:new", {
+        _id: notification._id,
+        type: "order:new",
+        title: notification.title,
+        body: notification.body,
+        link: notification.link,
+        read: false,
+        createdAt: notification.createdAt,
         orderId: order._id,
         totalAmount: order.totalAmount,
-        itemCount: order.items?.length || 0,
-        createdAt: new Date().toISOString(),
+        itemCount,
     });
+
+    return notification;
 };
 
 module.exports = {

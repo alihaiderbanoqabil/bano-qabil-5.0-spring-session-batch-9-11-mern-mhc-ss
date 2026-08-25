@@ -10,7 +10,7 @@ const AppError = require("../utils/AppError");
 const getNotifications = async (req, res) => {
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
 
-    const filter = Notification.filterFor(req.user.id);
+    const filter = Notification.filterFor(req.user.id, req.user.role);
 
     const notifications = await Notification.find(filter).sort({ createdAt: -1 }).limit(limit);
 
@@ -31,7 +31,7 @@ const getNotifications = async (req, res) => {
  */
 const markAsRead = async (req, res) => {
     const notification = await Notification.findOneAndUpdate(
-        { _id: req.params.id, ...Notification.filterFor(req.user.id) },
+        { _id: req.params.id, ...Notification.filterFor(req.user.id, req.user.role) },
         { $addToSet: { readBy: req.user.id } },
         { new: true }
     );
@@ -53,7 +53,7 @@ const markAllAsRead = async (req, res) => {
     const { modifiedCount } = await Notification.updateMany(
         // Sirf wo jo abhi tak is user ne nahi parhi — warna har document
         // bewajah likha jata hai
-        { ...Notification.filterFor(req.user.id), readBy: { $ne: req.user.id } },
+        { ...Notification.filterFor(req.user.id, req.user.role), readBy: { $ne: req.user.id } },
         { $addToSet: { readBy: req.user.id } }
     );
 

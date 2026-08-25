@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link } from "react-router-dom";
 import { MessageSquare, Trash2, Pencil, Reply, X } from "lucide-react";
@@ -41,7 +41,11 @@ export default function CommentSection({ productId }) {
 
   const [rating, setRating] = useState(0);
   const [replyTo, setReplyTo] = useState(null);
+  // Prefill kiya hua "@Name " — validation ko pata hona chahiye ke sirf itna
+  // likhna kaafi nahi
+  const [mention, setMention] = useState("");
   const [editing, setEditing] = useState(null);
+  const textareaRef = useRef(null);
 
   const {
     register,
@@ -49,6 +53,16 @@ export default function CommentSection({ productId }) {
     reset,
     formState: { errors },
   } = useForm({ defaultValues: { text: "" } });
+
+  const textField = register("text", {
+    required: "Please write something",
+    minLength: { value: 2, message: "That is too short" },
+    maxLength: { value: 1000, message: "Keep it under 1000 characters" },
+    // "@Admin User " khud 12 characters ka hai, is liye minLength us khali
+    // reply ko rok nahi pata jis mein mention ke ilawa kuch likha hi na ho.
+    validate: (value) =>
+      (mention && value.trim() === mention.trim()) ? "Add something after the mention" : true,
+  });
 
   const comments = data?.data || [];
   const summary = data?.summary;
@@ -82,6 +96,7 @@ export default function CommentSection({ productId }) {
       setRating(0);
       setReplyTo(null);
       setEditing(null);
+      setMention("");
     } catch (requestError) {
       toast.error(getApiError(requestError, "Could not post your comment"));
     }
@@ -91,18 +106,46 @@ export default function CommentSection({ productId }) {
     setEditing(comment);
     setReplyTo(null);
     setRating(comment.rating || 0);
+    setMention("");
     reset({ text: comment.text });
+  };
+
+  // Reply ka reply server usi thread mein daal deta hai (nesting flat rehti
+  // hai), is liye "@Name" hi wahi kaam karta hai jo nesting karti thi — batata
+  // hai jawab kis ko diya ja raha hai. Top-level par ye zaroorat nahi.
+  const startReply = (comment, mentionName) => {
+    const draft = mentionName ? `@${mentionName} ` : "";
+
+    setReplyTo(comment);
+    setEditing(null);
+    setMention(draft);
+    reset({ text: draft });
+
+    // Caret mention ke baad chahiye, warna user mention ke aage type karta hai.
+    // reset() DOM ko foran nahi likhta — value re-render par aati hai, is liye
+    // ek tick ruk kar caret set karte hain.
+    setTimeout(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(draft.length, draft.length);
+    }, 0);
   };
 
   const cancelForm = () => {
     setEditing(null);
     setReplyTo(null);
+    setMention("");
     setRating(0);
     reset({ text: "" });
   };
 
   const handleDelete = async (comment) => {
-    if (!window.confirm("Delete this comment? Replies to it will be deleted too.")) return;
+    // Reply ke neeche kuch nahi hota (thread do level deep hai), is liye usay
+    // "replies bhi jayengi" wali warning dena ghalat batata hai
+    const question = comment.parentComment
+      ? "Delete this reply?"
+      : "Delete this comment? Replies to it will be deleted too.";
+
+    if (!window.confirm(question)) return;
 
     try {
       await deleteComment({ id: comment._id, product: productId }).unwrap();
@@ -156,7 +199,13 @@ export default function CommentSection({ productId }) {
           {user ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-5">
               <h3 className="text-sm font-semibold text-slate-800">
-                {editing ? "Edit your comment" : replyTo ? `Reply to ${replyTo.user?.name}` : "Write something"}
+                {editing
+                  ? editing.parentComment
+                    ? "Edit your reply"
+                    : "Edit your comment"
+                  : replyTo
+                    ? `Reply to ${replyTo.user?.name || "Unknown"}`
+                    : "Write something"}
               </h3>
 
               <form onSubmit={handleSubmit(onSubmit)} className="mt-3 space-y-3" noValidate>
@@ -191,11 +240,13 @@ export default function CommentSection({ productId }) {
                   as="textarea"
                   placeholder={replyTo ? "Write your reply..." : "Share your experience or ask a question..."}
                   error={errors.text}
-                  {...register("text", {
-                    required: "Please write something",
-                    minLength: { value: 2, message: "That is too short" },
-                    maxLength: { value: 1000, message: "Keep it under 1000 characters" },
-                  })}
+                  {...textField}
+                  // react-hook-form ka ref bhi chahiye aur hamara bhi — caret
+                  // set karne ke liye element tak pohanchna parta hai
+                  ref={(element) => {
+                    textField.ref(element);
+                    textareaRef.current = element;
+                  }}
                 />
 
                 <div className="flex items-center gap-2">
@@ -210,6 +261,7 @@ export default function CommentSection({ productId }) {
                     <button
                       type="button"
                       onClick={cancelForm}
+                      aria-label={editing ? "Cancel editing" : "Cancel reply"}
                       className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
                     >
                       <X size={16} />
@@ -266,11 +318,7 @@ export default function CommentSection({ productId }) {
                       {user ? (
                         <button
                           type="button"
-                          onClick={() => {
-                            setReplyTo(comment);
-                            setEditing(null);
-                            reset({ text: "" });
-                          }}
+                          onClick={() => startReply(comment)}
                           className="flex items-center gap-1 font-medium text-slate-500 transition hover:text-brand-600"
                         >
                           <Reply size={13} /> Reply
@@ -308,16 +356,40 @@ export default function CommentSection({ productId }) {
                                   {formatDate(reply.createdAt)}
                                 </span>
                               </p>
-                              {reply.user?._id === user?._id ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDelete(reply)}
-                                  className="text-slate-400 transition hover:text-rose-600"
-                                  aria-label="Delete reply"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
-                              ) : null}
+
+                              <div className="flex shrink-0 items-center gap-2">
+                                {user ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => startReply(reply, reply.user?.name || "Unknown")}
+                                    className="text-slate-400 transition hover:text-brand-600"
+                                    aria-label={`Reply to ${reply.user?.name || "Unknown"}`}
+                                  >
+                                    <Reply size={12} />
+                                  </button>
+                                ) : null}
+
+                                {reply.user?._id === user?._id ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => startEdit(reply)}
+                                      className="text-slate-400 transition hover:text-brand-600"
+                                      aria-label="Edit your reply"
+                                    >
+                                      <Pencil size={12} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDelete(reply)}
+                                      className="text-slate-400 transition hover:text-rose-600"
+                                      aria-label="Delete reply"
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  </>
+                                ) : null}
+                              </div>
                             </div>
                             <p className="mt-1 text-sm text-slate-600">{reply.text}</p>
                           </li>

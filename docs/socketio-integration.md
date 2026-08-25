@@ -9,9 +9,9 @@ way, and how to extend them.
 
 | Event | Who receives it | Trigger |
 | --- | --- | --- |
-| `product:new` | **everyone** — logged in or not | Admin creates an active product |
+| `product:new` | **every customer** — logged in or not | Admin creates an active product |
 | `order:status` | **only that order's customer** | Admin changes the order status |
-| `order:payment` | that customer **and** all admins | Stripe webhook confirms/fails a payment |
+| `order:payment` | that customer **and** all admins | Payment confirmed/failed (webhook or sync) |
 | `order:new` | **only admins** | A customer places an order |
 
 Two things happen for every notification:
@@ -186,23 +186,41 @@ A broadcast to 10,000 customers must not write 10,000 documents. So:
 ```js
 // backend/src/models/notification.model.js
 {
-  user: ObjectId | null,   // null = broadcast (sab ke liye)
+  user: ObjectId | null,      // null = broadcast
+  audience: "all" | "admins", // broadcast kis tabqe ke liye (user null ho tab)
   type, title, body, link,
-  readBy: [ObjectId],      // kis kis ne parh li
+  readBy: [ObjectId],         // kis kis ne parh li
 }
 ```
 
-- **Targeted** (`order:status`) → `user: <id>`, `readBy` holds at most that one id.
-- **Broadcast** (`product:new`) → `user: null`, `readBy` grows as people read it.
+| Kind | Stored as | Example |
+| --- | --- | --- |
+| Targeted | `user: <id>` | `order:status` — one customer's order shipped |
+| Customer broadcast | `user: null, audience: "all"` | `product:new` |
+| Admin broadcast | `user: null, audience: "admins"` | `order:new`, the admin copy of `order:payment` |
 
-One document either way. Read state is per user, so marking a broadcast read
-does not affect anybody else.
+One document either way. Read state is per user (`readBy`), so one admin marking
+a new-order notification read does not clear it for the others.
 
 ```js
-notificationSchema.statics.filterFor = (userId) => ({
-  $or: [{ user: userId }, { user: null }],
+notificationSchema.statics.filterFor = (userId, role) => ({
+  $or: [
+    { user: userId },
+    { user: null, audience: role === "admin" ? "admins" : "all" },
+  ],
 });
 ```
+
+`audience` is only consulted when `user` is null — a targeted notification is
+identified by its user alone. That keeps documents written before the field
+existed working unchanged.
+
+**Why admins get their own records.** `order:new` used to be live-only: emit and
+forget. That meant an admin who closed the portal for the night came back to an
+empty bell and had to hunt through the orders table for what arrived while they
+were away. `order:payment` writes **two** records — one for the customer and one
+for admins — because the wording and the link differ (`/orders/:id` for the
+customer, `/orders?order=:id` to open the drawer in the admin table).
 
 ### API
 
@@ -267,9 +285,14 @@ database record.
 To add a new notification type:
 
 1. Add the type to the `enum` in `notification.model.js`.
-2. Write a `notifyX()` in `notification.service.js` — save the record, then emit.
-3. Call it from the controller where the thing actually happens.
+2. Write a `notifyX()` in `notification.service.js` — save the record (with the
+   right `user`/`audience`), then emit.
+3. Call it from the controller where the thing actually happens, with `await`.
 4. Handle the event in the frontend listener(s) and add an icon in the bell.
+
+Both portals' listeners insert the socket payload straight into the RTK Query
+cache with `updateQueryData` (de-duping on `_id`), so nothing refetches on
+arrival and the list is still complete when the user returns later.
 
 Keep the decision of *who gets what* in the service. `socket/index.js` should
 stay dumb — it only knows how to send.

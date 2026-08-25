@@ -11,7 +11,7 @@ import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 export const baseApi = createApi({
   reducerPath: "api",
   baseQuery: fetchBaseQuery({ baseUrl: "/api", credentials: "include" }),
-  tagTypes: ["Auth", "Product", "Category", "Order", "User", "Comment", "Stats"],
+  tagTypes: ["Auth", "Product", "Category", "Order", "User", "Comment", "Stats", "Notification"],
 
   /**
    * keepUnusedDataFor = cache entry ko kitni der zinda rakhna hai JAB uska

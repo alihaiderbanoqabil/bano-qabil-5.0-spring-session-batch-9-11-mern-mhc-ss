@@ -160,10 +160,15 @@ const createComment = async (req, res) => {
         if (parent.product.toString() !== product._id.toString()) {
             throw new AppError("Parent comment belongs to a different product", 400);
         }
-        // Threads sirf ek level deep — reply ka reply allowed nahi, warna UI
-        // par unlimited nesting sambhalna parta hai.
+
+        // Reply ka reply: usay reject nahi karte, usi thread mein daal dete
+        // hain (Facebook wala tareeqa). Yani nesting hamesha ek hi level rehti
+        // hai — UI ko unlimited depth sambhalni nahi parti — magar user ko
+        // "yahan reply nahi kar sakte" jaisi rukawat bhi nahi milti.
+        // Frontend text mein "@Name" laga deta hai, is liye kis ko jawab diya
+        // ja raha hai wo phir bhi saaf rehta hai.
         if (parent.parentComment) {
-            throw new AppError("You can only reply to a top-level comment", 400);
+            payload.parentComment = parent.parentComment;
         }
 
         payload.rating = null; // reply par rating nahi hoti

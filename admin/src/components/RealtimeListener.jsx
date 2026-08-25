@@ -4,14 +4,18 @@ import { useDispatch } from "react-redux";
 import { App } from "antd";
 import { socket } from "../socket";
 import { baseApi } from "../store/api/baseApi";
-import { pushNotification } from "../store/slices/notificationSlice";
+import { notificationApi } from "../store/api/notificationApi";
 import { useGetMeQuery } from "../store/api/authApi";
-import { formatCurrency, shortId } from "../utils/format";
 
 /**
  * Socket.IO listener — UI nahi rakhta. Events ko antd notification, bell ki
  * list, aur RTK Query cache invalidation mein badalta hai (dashboard aur
  * orders table khud refresh ho jate hain).
+ *
+ * Notification ka record server banata hai (services/notification.service.js),
+ * socket sirf live copy bhejta hai — usay seedha cache mein daal dete hain, is
+ * liye refetch ki zarorat nahi parti aur wapis aane par list server se poori
+ * mil jati hai.
  *
  * Server handshake par cookie dekh kar hamein "admins" room mein daalta hai,
  * is liye yahan sirf sunna hai — koi subscribe message bhejne ki zarorat nahi.
@@ -29,24 +33,37 @@ export default function RealtimeListener() {
     if (socket.connected) socket.disconnect();
     socket.connect();
 
-    const onOrderNew = (payload) => {
-      const short = shortId(payload.orderId);
+    // Live notification ko bell ki list ke sab se upar daal deta hai
+    const prependToList = (payload) => {
+      if (!payload._id) return;
 
       dispatch(
-        pushNotification({
-          kind: "order",
-          title: `New order ${short}`,
-          body: `${payload.itemCount} item${payload.itemCount === 1 ? "" : "s"} · ${formatCurrency(payload.totalAmount)}`,
-          link: `/orders?order=${payload.orderId}`,
-          createdAt: payload.createdAt,
+        notificationApi.util.updateQueryData("getNotifications", undefined, (draft) => {
+          // Reconnect par server wohi event dobara bhej sakta hai
+          if (draft.data.some((item) => item._id === payload._id)) return;
+
+          draft.data.unshift({
+            _id: payload._id,
+            type: payload.type,
+            title: payload.title,
+            body: payload.body,
+            link: payload.link,
+            read: false,
+            createdAt: payload.createdAt,
+          });
+          draft.unread += 1;
         })
       );
+    };
+
+    const onOrderNew = (payload) => {
+      prependToList(payload);
 
       notification.info({
-        message: `New order ${short}`,
-        description: `${payload.itemCount} item${payload.itemCount === 1 ? "" : "s"} · ${formatCurrency(payload.totalAmount)}`,
+        message: payload.title,
+        description: payload.body,
         placement: "bottomRight",
-        onClick: () => navigate(`/orders?order=${payload.orderId}`),
+        onClick: () => navigate(payload.link || `/orders?order=${payload.orderId}`),
         style: { cursor: "pointer" },
       });
 
@@ -55,22 +72,11 @@ export default function RealtimeListener() {
     };
 
     const onOrderPayment = (payload) => {
-      const short = shortId(payload.orderId);
-      const paid = payload.paymentStatus === "paid";
+      prependToList(payload);
 
-      dispatch(
-        pushNotification({
-          kind: "payment",
-          title: paid ? `Payment received ${short}` : `Payment ${payload.paymentStatus} ${short}`,
-          body: formatCurrency(payload.totalAmount),
-          link: `/orders?order=${payload.orderId}`,
-          createdAt: payload.createdAt,
-        })
-      );
-
-      notification[paid ? "success" : "warning"]({
-        message: paid ? `Payment received ${short}` : `Payment ${payload.paymentStatus} ${short}`,
-        description: formatCurrency(payload.totalAmount),
+      notification[payload.paymentStatus === "paid" ? "success" : "warning"]({
+        message: payload.title,
+        description: payload.body,
         placement: "bottomRight",
       });
 

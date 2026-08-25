@@ -53,6 +53,25 @@ aur orders table bina reload khud update ho jate hain**.
 Server handshake par cookie dekh kar admin ko `admins` room mein daalta hai,
 to sirf admins ko ye events milte hain.
 
+### Notifications rehti hain (persist)
+
+Socket sirf un tak pohanchata hai jo us waqt juday hue hain, is liye har
+notification pehle server par save hoti hai (`Notification` model,
+`audience: "admins"`), phir emit hoti hai. Nateeja:
+
+- portal band kar ke jane ke baad wapis aayen to darmiyan mein aayi orders
+  bell mein mojood hoti hain
+- page refresh par notifications gayab nahi hotin
+- "mark as read" (ek) aur "mark all as read" server par mehfooz rehte hain,
+  aur **har admin ka read state alag hota hai** — ek admin ke parhne se
+  doosre ka badge saaf nahi hota
+
+Bell `useGetNotificationsQuery` se list leta hai; live event aane par
+`updateQueryData` se list ke upar naya item lag jata hai (refetch ke bagair).
+
+Admin ko customer wali notifications (naya product) nahi dikhtin — wo product
+usne khud banaya hota hai. Server role dekh kar filter karta hai.
+
 ## Note
 
 Ye portal sirf admin ke liye hai. Customer role se login karne par app foran
